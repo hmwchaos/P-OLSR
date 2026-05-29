@@ -306,6 +306,7 @@ RoutingProtocol::RoutingProtocol()
       m_enablePrediction(false),
       m_usePredictionForRouting(false),
       m_usePredictionForMpr(false),
+      m_predictionAlpha(0.2),
       m_predictionBeta(0.05), //链路质量老化
       m_predictionGamma(0.2),
       m_minPredictionQuality(0.01),
@@ -1244,8 +1245,8 @@ RoutingProtocol::UpdatePredictionFromHello(const polsr::MessageHeader& msg,
         link->previousDistanceValid = true;
     }
 
-    phi = std::min(1.0, std::max(m_minPredictionQuality, phi));
-    rho = std::min(1.0, std::max(m_minPredictionQuality, rho));
+    phi = std::min(1.0, std::max(0.0, phi));
+    rho = std::min(1.0, std::max(0.0, rho));
     double quality = std::max(m_minPredictionQuality, phi * rho);
     /*
      * 论文中的速度加权 ETX：
@@ -1266,6 +1267,75 @@ RoutingProtocol::UpdatePredictionFromHello(const polsr::MessageHeader& msg,
                                  relativeSpeed,
                                  predictedCost,
                                  now);
+}
+
+void
+RoutingProtocol::ApplyHelloLossDecay()
+{
+    if (!m_enablePrediction)
+    {
+        return;
+    }
+
+    const double interval = m_helloInterval.GetSeconds();
+    if (interval <= 0.0)
+    {
+        return;
+    }
+
+    Time now = Simulator::Now();
+    LinkSet& links = m_state.GetLinks();
+    bool changed = false;
+    for (auto& link : links)
+    {
+        if (!link.predictionValid || link.time < now)
+        {
+            continue;
+        }
+
+        double elapsed = (now - link.predictionTime).GetSeconds();
+        if (elapsed < interval)
+        {
+            continue;
+        }
+
+        uint32_t missedIntervals = static_cast<uint32_t>(std::floor(elapsed / interval));
+        if (missedIntervals == 0)
+        {
+            continue;
+        }
+
+        /*
+         * ETX receiving-ratio update with a missed HELLO:
+         *   phi_l = alpha * 0 + (1 - alpha) * phi_{l-1}
+         * If several HELLO periods elapsed, apply the same recurrence repeatedly.
+         */
+        link.phi *= std::pow(1.0 - m_predictionAlpha, missedIntervals);
+        link.phi = std::min(1.0, std::max(0.0, link.phi));
+
+        double quality = std::max(m_minPredictionQuality, link.phi * link.rho);
+        double weightedEtx = std::exp(m_predictionBeta * link.relativeSpeed) / quality;
+        link.predictedCost =
+            std::min(m_maxPredictionCost, std::max(m_minPredictionQuality, weightedEtx));
+        if (!std::isfinite(link.predictedCost))
+        {
+            link.predictedCost = m_maxPredictionCost;
+        }
+        link.predictionTime = now;
+        changed = true;
+    }
+
+    if (changed)
+    {
+        if (m_usePredictionForMpr)
+        {
+            MprComputation();
+        }
+        if (m_usePredictionForRouting)
+        {
+            RoutingTableComputation();
+        }
+    }
 }
 
 double
@@ -3362,6 +3432,7 @@ RoutingProtocol::GetMessageSequenceNumber()
 void
 RoutingProtocol::HelloTimerExpire()
 {
+    ApplyHelloLossDecay();
     SendHello();
     m_helloTimer.Schedule(m_helloInterval);
 }

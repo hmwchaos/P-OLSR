@@ -190,9 +190,9 @@ struct LinkTuple
      */
 
     /// P-OLSR: HELLO 接收质量的平滑值，越接近 1 表示近期 HELLO 越稳定。
-    double phi{1.0};
+    double phi{0.0};
     /// P-OLSR: 反向接收率的平滑值，表示邻居接收本节点 HELLO 的质量。
-    double rho{1.0};
+    double rho{0.0};
     /// P-OLSR: 本节点和邻居沿连线方向的相对速度，正值表示距离正在变大。
     double relativeSpeed{0.0};
     /// P-OLSR: 最终链路预测代价。数值越小越适合作为路由边。

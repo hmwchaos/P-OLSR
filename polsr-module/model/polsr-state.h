@@ -368,6 +368,15 @@ class PolsrState
     }
 
     /**
+     * 获取可修改的链路集合。
+     * @return 链路集合。
+     */
+    LinkSet& GetLinks()
+    {
+        return m_linkSet;
+    }
+
+    /**
      * 查找链路 tuple。
      * @param ifaceAddr 链路对应的接口地址。
      * @returns 如果匹配则返回 tuple，否则返回空指针。

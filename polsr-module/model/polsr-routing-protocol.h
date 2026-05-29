@@ -458,6 +458,11 @@ class RoutingProtocol : public Ipv4RoutingProtocol
                                    const Ipv4Address& senderIface);
 
     /**
+     * @brief 对错过 HELLO 周期的链路执行 h_l=0 的 ETX 接收率衰减。
+     */
+    void ApplyHelloLossDecay();
+
+    /**
      * @brief 获取到指定一跳邻居的预测代价。
      */
     double GetNeighborPredictionCost(const Ipv4Address& neighborMainAddr) const;
