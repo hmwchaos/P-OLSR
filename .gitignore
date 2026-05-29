@@ -1,0 +1,18 @@
+# Python caches
+__pycache__/
+*.py[cod]
+
+# ns-3 / local runtime artifacts
+*.pcap
+*.tr
+*.log
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Temporary files
+tmp/
+*.tmp
+*.bak

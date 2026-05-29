@@ -1,0 +1,363 @@
+Paper reproduction source notes
+Generated on: 2026-05-07
+
+Paper
+-----
+Title:
+  Dynamic Routing for Flying Ad Hoc Networks
+
+Authors:
+  S. Rosati, K. Kruzelecki, G. Heitz, D. Floreano, B. Rimoldi
+
+Local paper file:
+  scratch/P-OLSR/Rosati 等 - 2016 - Dynamic Routing for Flying Ad Hoc Networks.pdf
+
+Extracted source used:
+  scratch/P-OLSR/paper_source/final_submission.tex
+
+
+Current P-OLSR folder state
+---------------------------
+Before this task, P-OLSR contained only the paper PDF. There were no ns-3
+scratch source files, no CMakeLists.txt, no run scripts, and no existing output
+data files in the P-OLSR folder.
+
+Because of that, the original "scratch file conversion" step produced a source
+summary based on:
+  - the local PDF,
+  - the downloaded arXiv source for the same paper,
+  - and the newly created ns-3 scratch reproduction harness.
+
+
+Paper mechanism to reproduce
+----------------------------
+The paper compares:
+  - OLSR with link-quality / ETX behavior,
+  - P-OLSR, an OLSR extension using GPS-based prediction.
+
+The P-OLSR idea is:
+  - Use positions available from UAV GPS/autopilot data.
+  - Estimate whether a pair of UAVs is moving closer or farther apart.
+  - Penalize links whose endpoints are moving apart.
+  - Prefer routes that are likely to stay connected.
+
+Baseline ETX:
+  ETX(route) = sum_hop 1 / (phi(hop) * rho(hop))
+
+Speed-weighted ETX:
+  ETX(hop i,j) = exp(v_ij * beta) / (phi(hop) * rho(hop))
+
+Instantaneous relative speed:
+  v_tilde_ij = (d_l_ij - d_l_minus_1_ij) / (t_l - t_l_minus_1)
+
+Smoothed relative speed:
+  v_l_ij = gamma * v_tilde_ij + (1 - gamma) * v_l_minus_1_ij
+
+Receiving ratio update:
+  phi_l = alpha * h_l + (1 - alpha) * phi_l_minus_1
+
+Notes:
+  - phi is the forward receiving ratio.
+  - rho is the reverse receiving ratio.
+  - beta is the P-OLSR speed-weight parameter.
+  - gamma is the P-OLSR speed-aging parameter.
+  - HI is the Hello interval.
+
+
+Paper parameters identified
+---------------------------
+UAV platform and radio:
+  - Fixed-wing eBee UAVs.
+  - 802.11n radio interface.
+  - 20 MHz bandwidth in the 5 GHz band.
+  - QPSK, code rate 1/2, one spatial stream.
+  - UAV cruising speed described around 12 m/s in the routing discussion.
+  - eBee platform also described around 57 km/h cruising speed.
+
+Link-performance experiment:
+  - 2 nodes: one ground node and one flying UAV.
+  - UAV flies between two checkpoints 450 m apart.
+  - Checkpoint turning radius: 30 m.
+  - UAV height above ground: 75 m.
+  - Ground node placed at one checkpoint center.
+  - Traffic: 85 UDP datagrams per second, totaling 1 Mbit/s.
+  - Datagrams delayed more than 5 s are treated as lost.
+  - Metric: datagram loss rate (DLR).
+  - Distance-to-DLR model used in this reproduction:
+      DLR(d) = 1 / (1 + exp(-(-8.9 + 0.025 d)))
+    This sign convention matches the paper text that DLR is low under about
+    250 m and roughly 0.5 near 350 m.
+
+3-node routing experiment:
+  - Node 1: fixed destination on ground.
+  - Node 2: flying UAV source.
+  - Node 3: flying UAV relay.
+  - HI = 0.5 s for both OLSR and P-OLSR.
+  - OLSR alpha = 0.2.
+  - P-OLSR alpha = 0.05.
+  - P-OLSR beta = 0.2.
+  - P-OLSR gamma = 0.04.
+  - Node 2 flies 600 m west from Node 1, then returns.
+  - Node 3 flies a circular trajectory with radius 30 m centered 250 m west
+    from Node 1.
+  - Both UAVs fly about 75 m above ground.
+  - 10 loops were performed for each routing algorithm.
+  - Average loop time was about 120 s.
+  - Expected topology changes: direct path to two-hop path and back.
+
+Large-network emulation:
+  - 19 moving UAVs.
+  - Node 2 scans a rectangular area and completes the trajectory in 380 s.
+  - Nodes 1 and 3..19 are uniformly spread and circulate around waypoints.
+  - Circular radius: 30 m.
+  - Speed: 12 m/s.
+  - Initial circular phase: uniformly distributed.
+  - Traffic: 85 UDP datagrams per second, totaling 1 Mbit/s, from Node 2 to
+    Node 1.
+  - Outage definition: DLR > 0.2.
+  - Repetitions: 10 per configuration.
+  - Example P-OLSR configurations:
+      alpha = 0.2, beta = 0.2, gamma varied.
+      alpha = 0.2, gamma = 0.08, beta varied.
+      beta = 0.2, gamma = 0.08, HI and alpha varied.
+
+
+Current implementation
+----------------------
+File:
+  scratch/P-OLSR/polsr_paper_reproduction.cc
+
+Model verifier:
+  scratch/P-OLSR/polsr_model_reproduction.py
+
+Default scenarios:
+  - field
+  - large
+  - both
+
+Default command-line values:
+  --scenario=both
+  --helloInterval=0.5
+  --runs=10
+  --beta=0.2
+  --gamma=0.04
+  --largeGamma=0.08
+
+Implemented metrics:
+  - Goodput.
+  - DLR.
+  - PDR.
+  - Outage time.
+  - Route changes.
+  - Estimated Hello overhead.
+
+Output files:
+  scratch/P-OLSR/results/polsr_reproduction_summary.csv
+  scratch/P-OLSR/results/field_trace.csv
+  scratch/P-OLSR/results/large_trace.csv
+
+Observed model-level summary from the Python verifier:
+  field / OLSR_ETX:
+    avg_goodput_mbps = 0.8860
+    avg_dlr = 0.1140
+    avg_outage_time_s = 20.9
+
+  field / P_OLSR_SPEED_WEIGHTED_ETX:
+    avg_goodput_mbps = 0.8909
+    avg_dlr = 0.1091
+    avg_outage_time_s = 14.9
+
+  large / OLSR_ETX:
+    avg_goodput_mbps = 0.8093
+    avg_dlr = 0.1907
+    avg_outage_time_s = 173.2
+
+  large / P_OLSR_SPEED_WEIGHTED_ETX:
+    avg_goodput_mbps = 0.7938
+    avg_dlr = 0.2062
+    avg_outage_time_s = 197.4
+
+Interpretation of current output:
+  - In the 3-node field-style scenario, the speed-weighted metric reduces
+    outage time in the expected direction.
+  - In the large substitute geometry, P-OLSR does not outperform OLSR. This is
+    not treated as a paper conclusion. The exact waypoint layout, EMANE model,
+    GPS error model, and real protocol behavior are missing, so the large
+    scenario remains a minimum substitute rather than a faithful reproduction.
+
+
+Mismatch and missing items
+--------------------------
+1. Full P-OLSR protocol integration is not implemented.
+   Reason:
+     A complete implementation would need changes in ns-3's OLSR message,
+     neighbor, topology, MPR, and route-computation internals. That is outside
+     the allowed write scope.
+
+2. This reproduction does not use a full ns-3 Wi-Fi packet simulation.
+   Reason:
+     The paper's MAC-layer emulation used EMANE and real OLSRd/P-OLSRd
+     processes. Recreating that exactly would need external tooling and
+     protocol integration outside P-OLSR.
+
+3. End-to-end delay is not produced as a packet-level metric.
+   Reason:
+     The current model computes expected DLR/PDR/goodput/outage from link
+     delivery probabilities. Packet-level delay requires a full network stack
+     and routing protocol implementation.
+
+4. The exact large-network waypoint coordinates are not fully specified in the
+   text source. The reproduction uses a deterministic relay grid and circular
+   waypoint motion as the minimum substitute consistent with the paper.
+
+5. The exact random GPS error model is not reproduced.
+   Reason:
+     The paper references an external GPS error characterization but does not
+     provide all distribution parameters in the extracted source used here.
+
+
+Run commands expected in the Linux ns-3 environment
+---------------------------------------------------
+From the Linux VM where the ns-3 tree lives:
+
+  cd /home/hmw/Documents/software/vscode-ns-3.45/ns-3.45
+  ./ns3 build scratch/P-OLSR/polsr_paper_reproduction
+  ./ns3 run "scratch/P-OLSR/polsr_paper_reproduction --scenario=both"
+
+Optional focused runs:
+
+  ./ns3 run "scratch/P-OLSR/polsr_paper_reproduction --scenario=field --runs=10"
+  ./ns3 run "scratch/P-OLSR/polsr_paper_reproduction --scenario=large --runs=10 --helloInterval=1.0"
+
+Normal output:
+  The program prints the summary CSV path and writes all CSV output under:
+    scratch/P-OLSR/results
+
+Command used in this restricted run:
+
+  cd /home/hmw/Documents/software/vscode-ns-3.45/ns-3.45
+  python3 scratch/P-OLSR/polsr_model_reproduction.py --scenario both --runs 10 --hello-interval 0.5
+
+Reason:
+  The ns-3 build/run commands update the ns-3 build directory outside P-OLSR.
+  Under this task's strict write boundary, those commands were not executed.
+
+
+Protocol-level ns-3 reproduction extension
+------------------------------------------
+After permission was given to copy external ns-3 files into P-OLSR, the native
+ns-3 OLSR implementation was copied read-only from src/olsr into:
+
+  scratch/P-OLSR/polsr-module
+
+The copied files were renamed from OLSR to P-OLSR locally, without modifying
+src/olsr or any other ns-3 module.
+
+Implemented local protocol files:
+  - scratch/P-OLSR/polsr-module/helper/polsr-helper.cc
+  - scratch/P-OLSR/polsr-module/helper/polsr-helper.h
+  - scratch/P-OLSR/polsr-module/model/polsr-header.cc
+  - scratch/P-OLSR/polsr-module/model/polsr-header.h
+  - scratch/P-OLSR/polsr-module/model/polsr-repositories.h
+  - scratch/P-OLSR/polsr-module/model/polsr-routing-protocol.cc
+  - scratch/P-OLSR/polsr-module/model/polsr-routing-protocol.h
+  - scratch/P-OLSR/polsr-module/model/polsr-state.cc
+  - scratch/P-OLSR/polsr-module/model/polsr-state.h
+
+New ns-3 experiment:
+  - scratch/P-OLSR/polsr_protocol_experiment.cc
+
+Local CMake file:
+  - scratch/P-OLSR/CMakeLists.txt
+
+Run helper:
+  - scratch/P-OLSR/run_protocol_experiments.sh
+
+Figure generator:
+  - scratch/P-OLSR/plot_results.py
+
+Protocol behavior implemented:
+  - Native ns-3 OLSR is used as the baseline.
+  - The copied local P-OLSR protocol is used as the predictive variant.
+  - P-OLSR adds configurable attributes:
+      EnablePrediction
+      Beta
+      Gamma
+      LinkQualityAging
+      DlrLogitIntercept
+      DlrLogitSlope
+      MaxLinkCost
+  - Link delivery is estimated from the paper's logistic distance-to-DLR model.
+  - phi and rho are smoothed receiving-ratio estimates.
+  - Relative speed is estimated from distance changes between route-computation
+    updates and smoothed with gamma.
+  - Route cost uses:
+      exp(relative_speed * beta) / (phi * rho)
+  - The routing table is recomputed with Dijkstra over symmetric neighbor,
+    two-hop neighbor, and topology tuples.
+
+Protocol experiment scenarios:
+  field:
+    3 nodes. Node 1 is the destination, node 2 is the source, node 3 is the
+    moving relay. The movement follows the paper's 600 m out-and-back source
+    path and 30 m relay circle centered near 250 m.
+
+  large:
+    19 nodes. Node 2 scans a rectangular area over 380 s. The other relays
+    circulate around deterministic waypoint centers. This remains a minimum
+    substitute because the paper text does not provide all exact waypoint
+    coordinates and random seeds.
+
+Protocol experiment output:
+  - scratch/P-OLSR/protocol-results/polsr_protocol_summary.csv
+
+Figure output:
+  - scratch/P-OLSR/figures/model_*.svg
+  - scratch/P-OLSR/figures/protocol_*.svg
+
+Metrics:
+  - throughput_mbps
+  - tx_packets
+  - rx_packets
+  - lost_packets
+  - pdr
+  - loss_ratio
+  - mean_delay_ms
+
+Run commands expected in the Linux ns-3 environment:
+
+  cd /home/hmw/Documents/software/vscode-ns-3.45/ns-3.45
+  bash scratch/P-OLSR/run_protocol_experiments.sh
+
+If ns-3 reports that scratch/P-OLSR/polsr_protocol_experiment cannot be found,
+refresh the CMake target cache once:
+
+  cd /home/hmw/Documents/software/vscode-ns-3.45/ns-3.45
+  ./ns3 configure
+  ./ns3 show targets | grep polsr
+
+Generate figures only:
+
+  cd /home/hmw/Documents/software/vscode-ns-3.45/ns-3.45
+  python3 scratch/P-OLSR/plot_results.py
+
+Equivalent manual commands:
+
+  cd /home/hmw/Documents/software/vscode-ns-3.45/ns-3.45
+  ./ns3 run "scratch/P-OLSR/polsr_protocol_experiment --scenario=field --protocol=OLSR"
+  ./ns3 run "scratch/P-OLSR/polsr_protocol_experiment --scenario=field --protocol=P-OLSR"
+  ./ns3 run "scratch/P-OLSR/polsr_protocol_experiment --scenario=large --protocol=OLSR"
+  ./ns3 run "scratch/P-OLSR/polsr_protocol_experiment --scenario=large --protocol=P-OLSR"
+
+Important boundary:
+  These ns-3 build/run commands generate build artifacts outside P-OLSR. They
+  were not executed under the strict "write only inside P-OLSR" rule. They are
+  the commands to run when build-output writes outside P-OLSR are allowed.
+
+Remaining mismatch with the paper:
+  - The copied protocol does not serialize GPS position fields into HELLO or TC
+    packets. It reads position from ns-3 MobilityModel inside the simulator.
+  - The paper used EMANE and modified OLSRd/P-OLSRd in an emulation setup;
+    this project now provides an ns-3 packet-level approximation.
+  - Exact GPS error distribution and exact large-network waypoint coordinates
+    are still not fully specified by the available paper source.

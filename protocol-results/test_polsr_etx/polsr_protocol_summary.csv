@@ -1,0 +1,4 @@
+scenario,protocol,hello_interval_s,tx_packets,rx_packets,lost_packets,pdr,dlr,goodput_mbps,mean_delay_ms,notes
+field,P-OLSR,0.5,10204,10074,129,0.9872599,0.012740102,1.0060568,2.1753028,local_polsr_copy_no_src_olsr_modification
+field,P-OLSR,0.5,10204,10074,129,0.9872599,0.012740102,1.0060568,2.1753028,local_polsr_copy_no_src_olsr_modification
+field,P-OLSR,0.5,10204,10074,129,0.9872599,0.012740102,1.0060568,2.1753028,local_polsr_copy_no_src_olsr_modification

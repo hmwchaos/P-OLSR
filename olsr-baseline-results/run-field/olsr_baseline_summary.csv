@@ -1,0 +1,2 @@
+experiment,scenario,protocol,node_count,hello_interval_s,sim_time_s,app_start_s,tx_packets,rx_packets,lost_packets,pdr,dlr,goodput_mbps,mean_delay_ms,route_trace_file,notes
+three_node_routing,field,OLSR,3,0.5,140,20,10160,9983,176,0.98257874,0.01742126,0.99696893,2.1408394,scratch/P-OLSR/olsr-baseline-results/run-field/olsr_route_trace_field.csv,paper_style_3_node

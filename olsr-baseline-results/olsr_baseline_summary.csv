@@ -1,0 +1,2 @@
+experiment,scenario,protocol,node_count,hello_interval_s,sim_time_s,app_start_s,tx_packets,rx_packets,lost_packets,pdr,dlr,goodput_mbps,mean_delay_ms,route_trace_file,notes
+large_network,large,OLSR,19,0.5,400,20,31760,28951,2559,0.91155542,0.088444584,0.91302312,39.473559,scratch/P-OLSR/olsr-baseline-results/olsr_route_trace_large.csv,paper_style_19_node
