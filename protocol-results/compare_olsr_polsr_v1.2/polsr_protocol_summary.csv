@@ -1,0 +1,7 @@
+scenario,protocol,hello_interval_s,tx_packets,rx_packets,lost_packets,pdr,dlr,goodput_mbps,mean_delay_ms,notes
+link,OLSR,0.5,6205,6114,90,0.98533441,0.014665592,0.81411307,1.3621197,local_polsr_copy_no_src_olsr_modification
+link,P-OLSR,0.5,6205,6114,90,0.98533441,0.014665592,0.81411307,1.3631011,local_polsr_copy_no_src_olsr_modification
+field,OLSR,0.5,10160,9983,176,0.98257874,0.01742126,0.99696893,2.1408394,local_polsr_copy_no_src_olsr_modification
+field,P-OLSR,0.5,10204,10074,129,0.9872599,0.012740102,1.0060568,2.2488584,local_polsr_copy_no_src_olsr_modification
+large,OLSR,0.5,31760,28951,2559,0.91155542,0.088444584,0.91302312,39.473559,local_polsr_copy_no_src_olsr_modification
+large,P-OLSR,0.5,30809,26366,4216,0.85578889,0.14421111,0.83150038,150.78772,local_polsr_copy_no_src_olsr_modification

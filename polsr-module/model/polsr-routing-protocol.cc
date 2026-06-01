@@ -1294,12 +1294,16 @@ RoutingProtocol::ApplyHelloLossDecay()
         }
 
         double elapsed = (now - link.predictionTime).GetSeconds();
-        if (elapsed < interval)
+        // 如果距离上次预测已经过了多个 HELLO 周期，说明可能错过了 HELLO 消息，链路质量可能已经下降。
+        double elapsedIntervals = elapsed / interval;
+        const double missedThreshold = 1.5;
+        if (elapsedIntervals < missedThreshold)
         {
             continue;
         }
 
-        uint32_t missedIntervals = static_cast<uint32_t>(std::floor(elapsed / interval));
+        uint32_t missedIntervals =
+            static_cast<uint32_t>(std::floor(elapsedIntervals - missedThreshold + 1.0));
         if (missedIntervals == 0)
         {
             continue;
