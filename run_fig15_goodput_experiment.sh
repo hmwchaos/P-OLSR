@@ -29,7 +29,7 @@ fi
 
 ./ns3 run "scratch/P-OLSR/polsr_header_smoke_test"
 
-COMMON_ARGS="--scenario=large --helloInterval=1.0 --predictionAlpha=0.1 --predictionBeta=0.2 --predictionGamma=0.08 --outageWindow=1.0 --outputDir=${OUTPUT_DIR}"
+COMMON_ARGS="--scenario=large --helloInterval=1.0 --predictionAlpha=0.1 --predictionBeta=0.2 --predictionGamma=0.08 --outageWindow=1.0 --wirelessProfile=paper-dlr --paperDlrMaxExtraLossDb=12.0 --outputDir=${OUTPUT_DIR}"
 
 for run in $(seq 1 "${RUNS}"); do
   echo "Running native OLSR run ${run}/${RUNS} with HI=1.0 reference condition"

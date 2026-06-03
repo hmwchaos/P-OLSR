@@ -14,8 +14,10 @@
 #include "ns3/mobility-module.h"
 #include "ns3/network-module.h"
 #include "ns3/olsr-helper.h"
+#include "ns3/propagation-module.h"
 #include "ns3/wifi-module.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -26,6 +28,80 @@
 #include <vector>
 
 using namespace ns3;
+
+namespace ns3
+{
+
+class PaperDlrPropagationLossModel : public PropagationLossModel
+{
+  public:
+    static TypeId GetTypeId();
+
+  private:
+    double DoCalcRxPower(double txPowerDbm, Ptr<MobilityModel> a, Ptr<MobilityModel> b) const override;
+    int64_t DoAssignStreams(int64_t stream) override;
+
+    double m_frequencyHz{5.18e9};
+    double m_systemLoss{1.0};
+    double m_dlrMaxExtraLossDb{12.0};
+};
+
+NS_OBJECT_ENSURE_REGISTERED(PaperDlrPropagationLossModel);
+
+TypeId
+PaperDlrPropagationLossModel::GetTypeId()
+{
+    static TypeId tid =
+        TypeId("ns3::PaperDlrPropagationLossModel")
+            .SetParent<PropagationLossModel>()
+            .SetGroupName("Propagation")
+            .AddConstructor<PaperDlrPropagationLossModel>()
+            .AddAttribute("Frequency",
+                          "Carrier frequency in Hz.",
+                          DoubleValue(5.18e9),
+                          MakeDoubleAccessor(&PaperDlrPropagationLossModel::m_frequencyHz),
+                          MakeDoubleChecker<double>(1.0))
+            .AddAttribute("SystemLoss",
+                          "Dimensionless system loss used by the Friis base loss.",
+                          DoubleValue(1.0),
+                          MakeDoubleAccessor(&PaperDlrPropagationLossModel::m_systemLoss),
+                          MakeDoubleChecker<double>(1.0))
+            .AddAttribute("DlrMaxExtraLoss",
+                          "Maximum extra loss in dB contributed by the paper DLR curve.",
+                          DoubleValue(12.0),
+                          MakeDoubleAccessor(&PaperDlrPropagationLossModel::m_dlrMaxExtraLossDb),
+                          MakeDoubleChecker<double>(0.0));
+    return tid;
+}
+
+double
+PaperDlrPropagationLossModel::DoCalcRxPower(double txPowerDbm,
+                                            Ptr<MobilityModel> a,
+                                            Ptr<MobilityModel> b) const
+{
+    const double distance = a->GetDistanceFrom(b);
+    if (distance <= 0.0)
+    {
+        return txPowerDbm;
+    }
+
+    constexpr double speedOfLight = 299792458.0;
+    const double wavelength = speedOfLight / m_frequencyHz;
+    constexpr double pi = 3.14159265358979323846;
+    const double friisLossDb =
+        20.0 * std::log10(4.0 * pi * distance / wavelength) + 10.0 * std::log10(m_systemLoss);
+    const double paperDlr = 1.0 / (1.0 + std::exp(-(-8.9 + 0.025 * distance)));
+    const double extraLossDb = m_dlrMaxExtraLossDb * std::clamp(paperDlr, 0.0, 1.0);
+    return txPowerDbm - friisLossDb - extraLossDb;
+}
+
+int64_t
+PaperDlrPropagationLossModel::DoAssignStreams(int64_t stream)
+{
+    return 0;
+}
+
+} // namespace ns3
 
 namespace
 {
@@ -47,6 +123,8 @@ struct ExperimentOptions
     double maxDeliveryDelay{5.0};
     uint32_t runIndex{1};
     uint32_t rngRun{1};
+    std::string wirelessProfile{"legacy"};
+    double paperDlrMaxExtraLossDb{12.0};
 };
 
 struct PacketRecord
@@ -395,19 +473,60 @@ RunExperiment(const std::string& scenario,
     nodes.Create(nodeCount);
 
     WifiHelper wifi;
-    wifi.SetStandard(WIFI_STANDARD_80211b);
-    wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager",
-                                 "DataMode",
-                                 StringValue("DsssRate11Mbps"),
-                                 "ControlMode",
-                                 StringValue("DsssRate11Mbps"));
+    if (options.wirelessProfile == "legacy")
+    {
+        wifi.SetStandard(WIFI_STANDARD_80211b);
+        wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager",
+                                     "DataMode",
+                                     StringValue("DsssRate11Mbps"),
+                                     "ControlMode",
+                                     StringValue("DsssRate11Mbps"));
+    }
+    else if (options.wirelessProfile == "paper" || options.wirelessProfile == "paper-dlr")
+    {
+        wifi.SetStandard(WIFI_STANDARD_80211n);
+        wifi.SetRemoteStationManager("ns3::ConstantRateWifiManager",
+                                     "DataMode",
+                                     StringValue("HtMcs1"),
+                                     "ControlMode",
+                                     StringValue("HtMcs0"));
+    }
+    else
+    {
+        NS_FATAL_ERROR("wirelessProfile must be legacy, paper, or paper-dlr");
+    }
 
     YansWifiChannelHelper channel;
     channel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
-    channel.AddPropagationLoss("ns3::FriisPropagationLossModel");
+    if (options.wirelessProfile == "legacy")
+    {
+        channel.AddPropagationLoss("ns3::FriisPropagationLossModel");
+    }
+    else if (options.wirelessProfile == "paper")
+    {
+        channel.AddPropagationLoss("ns3::LogDistancePropagationLossModel",
+                                   "Exponent",
+                                   DoubleValue(2.3),
+                                   "ReferenceDistance",
+                                   DoubleValue(1.0),
+                                   "ReferenceLoss",
+                                   DoubleValue(46.7));
+        channel.AddPropagationLoss("ns3::NakagamiPropagationLossModel");
+    }
+    else
+    {
+        channel.AddPropagationLoss("ns3::PaperDlrPropagationLossModel",
+                                   "DlrMaxExtraLoss",
+                                   DoubleValue(options.paperDlrMaxExtraLossDb));
+        channel.AddPropagationLoss("ns3::NakagamiPropagationLossModel");
+    }
 
     YansWifiPhyHelper phy;
     phy.SetChannel(channel.Create());
+    if (options.wirelessProfile == "paper" || options.wirelessProfile == "paper-dlr")
+    {
+        phy.Set("ChannelSettings", StringValue("{36, 20, BAND_5GHZ, 0}"));
+    }
     phy.Set("TxPowerStart", DoubleValue(16.0));
     phy.Set("TxPowerEnd", DoubleValue(16.0));
 
@@ -498,7 +617,8 @@ RunExperiment(const std::string& scenario,
         "paper_lost_packets,paper_pdr,paper_dlr,outage_time_s,outage_ratio,"
         "outage_window_s,outage_dlr_threshold,max_delivery_delay_s,"
         "delayed_over_max_packets,use_prediction_for_routing,use_prediction_for_mpr,"
-        "prediction_alpha,prediction_beta,prediction_gamma,notes";
+        "prediction_alpha,prediction_beta,prediction_gamma,wireless_profile,"
+        "paper_dlr_max_extra_loss_db,notes";
     const bool exists = std::filesystem::exists(csvPath);
     ValidateCsvHeader(csvPath, csvHeader);
 
@@ -527,7 +647,8 @@ RunExperiment(const std::string& scenario,
         << options.maxDeliveryDelay << ',' << deliveryTracker.latePackets << ','
         << options.usePredictionForRouting << ',' << options.usePredictionForMpr << ','
         << options.predictionAlpha << ',' << effectivePredictionBeta << ','
-        << options.predictionGamma
+        << options.predictionGamma << ',' << options.wirelessProfile << ','
+        << options.paperDlrMaxExtraLossDb
         << ",local_polsr_copy_no_src_olsr_modification\n";
 
     const std::filesystem::path timeSeriesPath =
@@ -535,6 +656,7 @@ RunExperiment(const std::string& scenario,
     const std::string timeSeriesHeader =
         "run_index,rng_run,scenario,protocol,hello_interval_s,prediction_alpha,prediction_beta,"
         "prediction_gamma,use_prediction_for_routing,use_prediction_for_mpr,"
+        "wireless_profile,paper_dlr_max_extra_loss_db,"
         "window_s,time_s,tx_packets,rx_packets,rx_bytes,goodput_mbps";
     const bool timeSeriesExists = std::filesystem::exists(timeSeriesPath);
     ValidateCsvHeader(timeSeriesPath, timeSeriesHeader);
@@ -558,7 +680,8 @@ RunExperiment(const std::string& scenario,
                       << protocol << ',' << options.helloInterval << ','
                       << options.predictionAlpha << ',' << effectivePredictionBeta << ','
                       << options.predictionGamma << ',' << options.usePredictionForRouting << ','
-                      << options.usePredictionForMpr << ',' << options.outageWindow << ','
+                      << options.usePredictionForMpr << ',' << options.wirelessProfile << ','
+                      << options.paperDlrMaxExtraLossDb << ',' << options.outageWindow << ','
                       << time << ',' << deliveryTracker.txByBin[i] << ','
                       << deliveryTracker.rxByBin[i] << ',' << deliveryTracker.rxBytesByBin[i]
                       << ',' << windowGoodput << "\n";
@@ -603,6 +726,12 @@ main(int argc, char* argv[])
                  options.maxDeliveryDelay);
     cmd.AddValue("runIndex", "User-visible run index written to CSV output", options.runIndex);
     cmd.AddValue("rngRun", "ns-3 RNG run number for repeated experiments", options.rngRun);
+    cmd.AddValue("wirelessProfile",
+                 "Wireless profile: legacy, paper, or paper-dlr",
+                 options.wirelessProfile);
+    cmd.AddValue("paperDlrMaxExtraLossDb",
+                 "Maximum extra propagation loss in dB added by the paper-dlr profile",
+                 options.paperDlrMaxExtraLossDb);
     cmd.Parse(argc, argv);
 
     RunExperiment(scenario, protocol, outputDir, options);
