@@ -21,6 +21,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,157 @@ namespace
 
 constexpr uint16_t kPort = 9000;
 constexpr double kPi = 3.14159265358979323846;
+
+struct ExperimentOptions
+{
+    double helloInterval{0.5};
+    bool usePredictionForRouting{true};
+    bool usePredictionForMpr{false};
+    double predictionAlpha{0.05};
+    double predictionBeta{0.2};
+    double predictionGamma{0.04};
+    double predictionValidityMultiplier{3.0};
+    double outageWindow{1.0};
+    double outageDlrThreshold{0.2};
+    double maxDeliveryDelay{5.0};
+    uint32_t runIndex{1};
+    uint32_t rngRun{1};
+};
+
+struct PacketRecord
+{
+    uint32_t bin{0};
+    double txTime{0.0};
+};
+
+struct DeliveryTracker
+{
+    double appStart{0.0};
+    double appStop{0.0};
+    double window{1.0};
+    double maxDelay{5.0};
+    double outageDlrThreshold{0.2};
+    std::vector<uint64_t> txByBin;
+    std::vector<uint64_t> rxByBin;
+    std::vector<uint64_t> rxBytesByBin;
+    std::map<uint64_t, PacketRecord> txRecords;
+    uint64_t latePackets{0};
+};
+
+struct OutageSummary
+{
+    uint64_t txPackets{0};
+    uint64_t rxPackets{0};
+    uint64_t lostPackets{0};
+    double pdr{0.0};
+    double dlr{0.0};
+    double outageTime{0.0};
+    double outageRatio{0.0};
+};
+
+uint32_t
+BinForTime(const DeliveryTracker& tracker, double time)
+{
+    if (time <= tracker.appStart || tracker.window <= 0.0)
+    {
+        return 0;
+    }
+    return static_cast<uint32_t>((time - tracker.appStart) / tracker.window);
+}
+
+void
+RecordTx(DeliveryTracker* tracker, Ptr<const Packet> packet)
+{
+    const double now = Simulator::Now().GetSeconds();
+    const uint32_t bin = BinForTime(*tracker, now);
+    if (bin >= tracker->txByBin.size())
+    {
+        return;
+    }
+
+    tracker->txByBin[bin]++;
+    tracker->txRecords[packet->GetUid()] = PacketRecord{bin, now};
+}
+
+void
+RecordRx(DeliveryTracker* tracker, Ptr<const Packet> packet, const Address&)
+{
+    const auto item = tracker->txRecords.find(packet->GetUid());
+    if (item == tracker->txRecords.end())
+    {
+        return;
+    }
+
+    const double delay = Simulator::Now().GetSeconds() - item->second.txTime;
+    if (delay <= tracker->maxDelay && item->second.bin < tracker->rxByBin.size())
+    {
+        tracker->rxByBin[item->second.bin]++;
+        tracker->rxBytesByBin[item->second.bin] += packet->GetSize();
+    }
+    else
+    {
+        tracker->latePackets++;
+    }
+    tracker->txRecords.erase(item);
+}
+
+OutageSummary
+ComputeOutageSummary(const DeliveryTracker& tracker)
+{
+    OutageSummary summary;
+    const double duration = tracker.appStop - tracker.appStart;
+    for (uint32_t i = 0; i < tracker.txByBin.size(); ++i)
+    {
+        const uint64_t tx = tracker.txByBin[i];
+        const uint64_t rx = tracker.rxByBin[i];
+        summary.txPackets += tx;
+        summary.rxPackets += rx;
+
+        if (tx == 0)
+        {
+            continue;
+        }
+
+        const double dlr = 1.0 - static_cast<double>(rx) / static_cast<double>(tx);
+        if (dlr > tracker.outageDlrThreshold)
+        {
+            const double binStart = i * tracker.window;
+            const double binDuration = std::min(tracker.window, duration - binStart);
+            if (binDuration > 0.0)
+            {
+                summary.outageTime += binDuration;
+            }
+        }
+    }
+
+    summary.lostPackets = summary.txPackets >= summary.rxPackets
+                              ? summary.txPackets - summary.rxPackets
+                              : 0;
+    summary.pdr = summary.txPackets == 0
+                      ? 0.0
+                      : static_cast<double>(summary.rxPackets) / summary.txPackets;
+    summary.dlr = 1.0 - summary.pdr;
+    summary.outageRatio = duration <= 0.0 ? 0.0 : summary.outageTime / duration;
+    return summary;
+}
+
+void
+ValidateCsvHeader(const std::filesystem::path& csvPath, const std::string& expectedHeader)
+{
+    if (!std::filesystem::exists(csvPath))
+    {
+        return;
+    }
+
+    std::ifstream existingCsv(csvPath);
+    std::string existingHeader;
+    std::getline(existingCsv, existingHeader);
+    if (existingHeader != expectedHeader)
+    {
+        NS_FATAL_ERROR("Existing CSV header does not match the current schema: "
+                       << csvPath << ". Choose a new outputDir to avoid mixing old and new results.");
+    }
+}
 
 Vector
 LinkPosition(uint32_t nodeIndex, double t)
@@ -186,7 +338,7 @@ ApplyMobility(NodeContainer nodes, std::string scenario, double t, double step, 
 }
 
 void
-InstallRouting(NodeContainer nodes, const std::string& protocol, double helloInterval)
+InstallRouting(NodeContainer nodes, const std::string& protocol, const ExperimentOptions& options)
 {
     Ipv4ListRoutingHelper list;
     InternetStackHelper internet;
@@ -194,13 +346,13 @@ InstallRouting(NodeContainer nodes, const std::string& protocol, double helloInt
     if (protocol == "OLSR")
     {
         OlsrHelper olsr;
-        olsr.Set("HelloInterval", TimeValue(Seconds(helloInterval)));
+        olsr.Set("HelloInterval", TimeValue(Seconds(options.helloInterval)));
         list.Add(olsr, 100);
     }
-    else if (protocol == "P-OLSR")
+    else if (protocol == "OLSR-ETX" || protocol == "P-OLSR")
     {
         PolsrHelper polsr;
-        polsr.Set("HelloInterval", TimeValue(Seconds(helloInterval)));
+        polsr.Set("HelloInterval", TimeValue(Seconds(options.helloInterval)));
         /*
          * 这里安装的是 scratch/P-OLSR/polsr-module 中的协议级 P-OLSR 副本，
          * 不是 ns-3 原生 src/olsr。
@@ -210,17 +362,18 @@ InstallRouting(NodeContainer nodes, const std::string& protocol, double helloInt
          * UsePredictionForMpr 只在 MPR 候选打平时使用预测代价作为辅助判断。
          */
         polsr.Set("EnablePrediction", BooleanValue(true));
-        polsr.Set("UsePredictionForRouting", BooleanValue(true));
-        polsr.Set("UsePredictionForMpr", BooleanValue(true));
-        polsr.Set("PredictionAlpha", DoubleValue(0.05));
-        polsr.Set("PredictionBeta", DoubleValue(0.2));
-        polsr.Set("PredictionGamma", DoubleValue(0.04));
-        polsr.Set("PredictionValidityTime", TimeValue(Seconds(3.0 * helloInterval)));
+        polsr.Set("UsePredictionForRouting", BooleanValue(options.usePredictionForRouting));
+        polsr.Set("UsePredictionForMpr", BooleanValue(options.usePredictionForMpr));
+        polsr.Set("PredictionAlpha", DoubleValue(options.predictionAlpha));
+        polsr.Set("PredictionBeta", DoubleValue(protocol == "OLSR-ETX" ? 0.0 : options.predictionBeta));
+        polsr.Set("PredictionGamma", DoubleValue(options.predictionGamma));
+        polsr.Set("PredictionValidityTime",
+                  TimeValue(Seconds(options.predictionValidityMultiplier * options.helloInterval)));
         list.Add(polsr, 100);
     }
     else
     {
-        NS_FATAL_ERROR("protocol must be OLSR or P-OLSR");
+        NS_FATAL_ERROR("protocol must be OLSR, OLSR-ETX, or P-OLSR");
     }
 
     internet.SetRoutingHelper(list);
@@ -231,11 +384,12 @@ void
 RunExperiment(const std::string& scenario,
               const std::string& protocol,
               const std::string& outputDir,
-              double helloInterval)
+              const ExperimentOptions& options)
 {
     const uint32_t nodeCount = NodeCountForScenario(scenario);
     const double stopTime = StopTimeForScenario(scenario);
     const double appStart = 20.0;
+    SeedManager::SetRun(options.rngRun);
 
     NodeContainer nodes;
     nodes.Create(nodeCount);
@@ -266,7 +420,7 @@ RunExperiment(const std::string& scenario,
     mobility.Install(nodes);
     ApplyMobility(nodes, scenario, 0.0, 0.5, stopTime);
 
-    InstallRouting(nodes, protocol, helloInterval);
+    InstallRouting(nodes, protocol, options);
 
     Ipv4AddressHelper address;
     address.SetBase("10.10.0.0", "255.255.255.0");
@@ -287,6 +441,24 @@ RunExperiment(const std::string& scenario,
     ApplicationContainer sourceApp = source.Install(nodes.Get(1));
     sourceApp.Start(Seconds(appStart));
     sourceApp.Stop(Seconds(stopTime));
+
+    DeliveryTracker deliveryTracker;
+    deliveryTracker.appStart = appStart;
+    deliveryTracker.appStop = stopTime;
+    deliveryTracker.window = options.outageWindow;
+    deliveryTracker.maxDelay = options.maxDeliveryDelay;
+    deliveryTracker.outageDlrThreshold = options.outageDlrThreshold;
+    const uint32_t outageBins =
+        options.outageWindow <= 0.0
+            ? 0
+            : static_cast<uint32_t>(std::ceil((stopTime - appStart) / options.outageWindow));
+    deliveryTracker.txByBin.assign(outageBins, 0);
+    deliveryTracker.rxByBin.assign(outageBins, 0);
+    deliveryTracker.rxBytesByBin.assign(outageBins, 0);
+    sourceApp.Get(0)->TraceConnectWithoutContext("Tx",
+                                                 MakeBoundCallback(&RecordTx, &deliveryTracker));
+    sinkApp.Get(0)->TraceConnectWithoutContext("Rx",
+                                               MakeBoundCallback(&RecordRx, &deliveryTracker));
 
     FlowMonitorHelper flowHelper;
     Ptr<FlowMonitor> monitor = flowHelper.InstallAll();
@@ -320,12 +492,20 @@ RunExperiment(const std::string& scenario,
     std::filesystem::create_directories(outputDir);
     const std::filesystem::path csvPath =
         std::filesystem::path(outputDir) / "polsr_protocol_summary.csv";
+    const std::string csvHeader =
+        "run_index,rng_run,scenario,protocol,hello_interval_s,tx_packets,rx_packets,lost_packets,pdr,dlr,"
+        "goodput_mbps,mean_delay_ms,paper_tx_packets,paper_rx_packets,"
+        "paper_lost_packets,paper_pdr,paper_dlr,outage_time_s,outage_ratio,"
+        "outage_window_s,outage_dlr_threshold,max_delivery_delay_s,"
+        "delayed_over_max_packets,use_prediction_for_routing,use_prediction_for_mpr,"
+        "prediction_alpha,prediction_beta,prediction_gamma,notes";
     const bool exists = std::filesystem::exists(csvPath);
+    ValidateCsvHeader(csvPath, csvHeader);
+
     std::ofstream csv(csvPath, std::ios::app);
     if (!exists)
     {
-        csv << "scenario,protocol,hello_interval_s,tx_packets,rx_packets,lost_packets,pdr,dlr,"
-            << "goodput_mbps,mean_delay_ms,notes\n";
+        csv << csvHeader << "\n";
     }
 
     const double pdr = txPackets == 0 ? 0.0 : static_cast<double>(rxPackets) / txPackets;
@@ -334,14 +514,59 @@ RunExperiment(const std::string& scenario,
     const double goodput = duration <= 0.0 ? 0.0 : (static_cast<double>(rxBytes) * 8.0) / duration / 1e6;
     const double meanDelayMs =
         rxPackets == 0 ? 0.0 : delaySum.GetMilliSeconds() / static_cast<double>(rxPackets);
+    const OutageSummary outage = ComputeOutageSummary(deliveryTracker);
+    const double effectivePredictionBeta = protocol == "OLSR-ETX" ? 0.0 : options.predictionBeta;
 
-    csv << scenario << ',' << protocol << ',' << helloInterval << ',' << txPackets << ','
+    csv << options.runIndex << ',' << options.rngRun << ',' << scenario << ',' << protocol << ','
+        << options.helloInterval << ',' << txPackets << ','
         << rxPackets << ',' << lostPackets << ',' << std::setprecision(8) << pdr << ',' << dlr
-        << ',' << goodput << ',' << meanDelayMs
+        << ',' << goodput << ',' << meanDelayMs << ',' << outage.txPackets << ','
+        << outage.rxPackets << ',' << outage.lostPackets << ',' << outage.pdr << ','
+        << outage.dlr << ',' << outage.outageTime << ',' << outage.outageRatio << ','
+        << options.outageWindow << ',' << options.outageDlrThreshold << ','
+        << options.maxDeliveryDelay << ',' << deliveryTracker.latePackets << ','
+        << options.usePredictionForRouting << ',' << options.usePredictionForMpr << ','
+        << options.predictionAlpha << ',' << effectivePredictionBeta << ','
+        << options.predictionGamma
         << ",local_polsr_copy_no_src_olsr_modification\n";
+
+    const std::filesystem::path timeSeriesPath =
+        std::filesystem::path(outputDir) / "polsr_goodput_timeseries.csv";
+    const std::string timeSeriesHeader =
+        "run_index,rng_run,scenario,protocol,hello_interval_s,prediction_alpha,prediction_beta,"
+        "prediction_gamma,use_prediction_for_routing,use_prediction_for_mpr,"
+        "window_s,time_s,tx_packets,rx_packets,rx_bytes,goodput_mbps";
+    const bool timeSeriesExists = std::filesystem::exists(timeSeriesPath);
+    ValidateCsvHeader(timeSeriesPath, timeSeriesHeader);
+    std::ofstream timeSeriesCsv(timeSeriesPath, std::ios::app);
+    if (!timeSeriesExists)
+    {
+        timeSeriesCsv << timeSeriesHeader << "\n";
+    }
+    for (uint32_t i = 0; i < deliveryTracker.rxBytesByBin.size(); ++i)
+    {
+        const double elapsed = i * options.outageWindow;
+        const double windowDuration = std::min(options.outageWindow, duration - elapsed);
+        if (windowDuration <= 0.0)
+        {
+            continue;
+        }
+        const double time = appStart + elapsed + 0.5 * windowDuration;
+        const double windowGoodput =
+            static_cast<double>(deliveryTracker.rxBytesByBin[i]) * 8.0 / windowDuration / 1e6;
+        timeSeriesCsv << options.runIndex << ',' << options.rngRun << ',' << scenario << ','
+                      << protocol << ',' << options.helloInterval << ','
+                      << options.predictionAlpha << ',' << effectivePredictionBeta << ','
+                      << options.predictionGamma << ',' << options.usePredictionForRouting << ','
+                      << options.usePredictionForMpr << ',' << options.outageWindow << ','
+                      << time << ',' << deliveryTracker.txByBin[i] << ','
+                      << deliveryTracker.rxByBin[i] << ',' << deliveryTracker.rxBytesByBin[i]
+                      << ',' << windowGoodput << "\n";
+    }
 
     Simulator::Destroy();
     std::cout << "Wrote " << csvPath << std::endl;
+    std::cout << "Wrote " << timeSeriesPath << std::endl;
 }
 
 } // namespace
@@ -352,15 +577,34 @@ main(int argc, char* argv[])
     std::string scenario = "field";
     std::string protocol = "P-OLSR";
     std::string outputDir = "scratch/P-OLSR/protocol-results";
-    double helloInterval = 0.5;
+    ExperimentOptions options;
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("scenario", "link, field, or large", scenario);
-    cmd.AddValue("protocol", "OLSR or P-OLSR", protocol);
+    cmd.AddValue("protocol", "OLSR, OLSR-ETX, or P-OLSR", protocol);
     cmd.AddValue("outputDir", "CSV output directory", outputDir);
-    cmd.AddValue("helloInterval", "Hello interval in seconds", helloInterval);
+    cmd.AddValue("helloInterval", "Hello interval in seconds", options.helloInterval);
+    cmd.AddValue("usePredictionForRouting",
+                 "Use predicted ETX cost in P-OLSR route computation",
+                 options.usePredictionForRouting);
+    cmd.AddValue("usePredictionForMpr",
+                 "Use predicted ETX cost as an MPR tie-breaker",
+                 options.usePredictionForMpr);
+    cmd.AddValue("predictionAlpha", "P-OLSR HELLO reception smoothing alpha", options.predictionAlpha);
+    cmd.AddValue("predictionBeta", "P-OLSR speed-weighted ETX beta", options.predictionBeta);
+    cmd.AddValue("predictionGamma", "P-OLSR relative-speed smoothing gamma", options.predictionGamma);
+    cmd.AddValue("predictionValidityMultiplier",
+                 "Prediction validity time as a multiple of Hello interval",
+                 options.predictionValidityMultiplier);
+    cmd.AddValue("outageWindow", "Outage accounting window in seconds", options.outageWindow);
+    cmd.AddValue("outageDlrThreshold", "A window is outage when DLR is above this value", options.outageDlrThreshold);
+    cmd.AddValue("maxDeliveryDelay",
+                 "Packets delayed more than this many seconds are counted as not delivered for paper-style outage",
+                 options.maxDeliveryDelay);
+    cmd.AddValue("runIndex", "User-visible run index written to CSV output", options.runIndex);
+    cmd.AddValue("rngRun", "ns-3 RNG run number for repeated experiments", options.rngRun);
     cmd.Parse(argc, argv);
 
-    RunExperiment(scenario, protocol, outputDir, helloInterval);
+    RunExperiment(scenario, protocol, outputDir, options);
     return 0;
 }
