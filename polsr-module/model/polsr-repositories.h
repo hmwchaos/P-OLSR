@@ -199,6 +199,12 @@ struct LinkTuple
     double predictedCost{1.0};
     /// P-OLSR: 上一次更新上述预测字段的仿真时间。
     Time predictionTime;
+    /// P-OLSR: Next nominal HELLO arrival used by Expected Arrival Time decay.
+    Time nextExpectedHelloTime;
+    /// P-OLSR: HELLO loss deadline after jitter tolerance.
+    Time helloDeadlineTime;
+    /// P-OLSR: Whether nextExpectedHelloTime and helloDeadlineTime are initialized.
+    bool helloDeadlineValid{false};
     /// P-OLSR: 是否已经收到过足够的信息，可把 predictedCost 当作有效值。
     bool predictionValid{false};
     /// P-OLSR: 上一次本节点和邻居之间的距离，用于估算距离变化率。
