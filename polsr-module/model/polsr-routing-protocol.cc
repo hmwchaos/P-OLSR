@@ -271,6 +271,11 @@ RoutingProtocol::GetTypeId()
                           DoubleValue(0.2),
                           MakeDoubleAccessor(&RoutingProtocol::m_predictionGamma),
                           MakeDoubleChecker<double>(0.0, 1.0))
+            .AddAttribute("HelloDeadlineFactor",
+                          "HELLO deadline multiplier used by Expected Arrival Time decay.",
+                          DoubleValue(1.5),
+                          MakeDoubleAccessor(&RoutingProtocol::m_helloDeadlineFactor),
+                          MakeDoubleChecker<double>(1.0))
             .AddAttribute("MinPredictionQuality",
                           "Lower bound for phi*rho in ETX.",
                           DoubleValue(0.01),
@@ -312,6 +317,7 @@ RoutingProtocol::RoutingProtocol()
       m_minPredictionQuality(0.01),
       m_maxPredictionCost(1000.0),
       m_predictionValidityTime(Seconds(6)),
+      m_helloDeadlineFactor(1.5),
       m_ipv4(nullptr),
       m_helloTimer(Timer::CANCEL_ON_DESTROY),
       m_tcTimer(Timer::CANCEL_ON_DESTROY),
@@ -1268,11 +1274,10 @@ RoutingProtocol::UpdatePredictionFromHello(const polsr::MessageHeader& msg,
                                  predictedCost,
                                  now);
     const double interval = m_helloInterval.GetSeconds();
-    const double helloDeadlineFactor = 1.5;
     if (interval > 0.0)
     {
         link->nextExpectedHelloTime = now + Seconds(interval);
-        link->helloDeadlineTime = now + Seconds(helloDeadlineFactor * interval);
+        link->helloDeadlineTime = now + Seconds(m_helloDeadlineFactor * interval);
         link->helloDeadlineValid = true;
     }
 }
@@ -1301,11 +1306,10 @@ RoutingProtocol::ApplyHelloLossDecay()
             continue;
         }
 
-        const double helloDeadlineFactor = 1.5;
         if (!link.helloDeadlineValid)
         {
             link.nextExpectedHelloTime = link.predictionTime + Seconds(interval);
-            link.helloDeadlineTime = link.predictionTime + Seconds(helloDeadlineFactor * interval);
+            link.helloDeadlineTime = link.predictionTime + Seconds(m_helloDeadlineFactor * interval);
             link.helloDeadlineValid = true;
         }
 

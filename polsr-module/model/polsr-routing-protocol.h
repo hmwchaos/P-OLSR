@@ -267,6 +267,8 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     double m_maxPredictionCost;       //!< 预测代价上限。
     Time m_predictionValidityTime;    //!< 节点运动信息有效时间。
 
+    double m_helloDeadlineFactor; //!< HELLO deadline multiplier for Expected Arrival Time decay.
+
     PolsrState m_state; //!< POLSR 内部状态，包含协议所需的各类集合和表。
     Ptr<Ipv4> m_ipv4;  //!< 当前路由协议关联的 IPv4 对象。
 

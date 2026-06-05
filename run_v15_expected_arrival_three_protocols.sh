@@ -6,8 +6,10 @@ NS3_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 cd "${NS3_ROOT}"
 
-OUTPUT_DIR="${1:-scratch/P-OLSR/protocol-results/V1.5_expected_arrival_three_protocols_10runs_v1}"
 RUNS="${RUNS:-10}"
+VERSION_PREFIX="${VERSION_PREFIX:-V1.5}"
+HELLO_DEADLINE_FACTOR="${HELLO_DEADLINE_FACTOR:-1.5}"
+OUTPUT_DIR="${1:-scratch/P-OLSR/protocol-results/${VERSION_PREFIX}_deadline_${HELLO_DEADLINE_FACTOR}HI_three_protocols_${RUNS}runs}"
 SUMMARY_CSV="${OUTPUT_DIR}/polsr_protocol_summary.csv"
 TIMESERIES_CSV="${OUTPUT_DIR}/polsr_goodput_timeseries.csv"
 AVERAGE_CSV="${OUTPUT_DIR}/polsr_protocol_average.csv"
@@ -29,16 +31,16 @@ fi
 
 ./ns3 run "scratch/P-OLSR/polsr_header_smoke_test"
 
-COMMON_ARGS="--scenario=large --helloInterval=1.0 --predictionAlpha=0.1 --predictionBeta=0.2 --predictionGamma=0.08 --outageWindow=1.0 --wirelessProfile=paper-dlr --paperDlrMaxExtraLossDb=12.0 --outputDir=${OUTPUT_DIR}"
+COMMON_ARGS="--scenario=large --helloInterval=1.0 --predictionAlpha=0.1 --predictionBeta=0.2 --predictionGamma=0.08 --helloDeadlineFactor=${HELLO_DEADLINE_FACTOR} --outageWindow=1.0 --wirelessProfile=paper-dlr --paperDlrMaxExtraLossDb=12.0 --outputDir=${OUTPUT_DIR}"
 
 for run in $(seq 1 "${RUNS}"); do
-  echo "Running native OLSR run ${run}/${RUNS} with V1.5 Expected Arrival Time comparison condition"
+  echo "Running native OLSR run ${run}/${RUNS} with ${VERSION_PREFIX} Expected Arrival Time comparison condition"
   ./ns3 run "scratch/P-OLSR/polsr_protocol_experiment --protocol=OLSR --runIndex=${run} --rngRun=${run} ${COMMON_ARGS}"
 
-  echo "Running OLSR-ETX run ${run}/${RUNS} with V1.5 Expected Arrival Time comparison condition"
+  echo "Running OLSR-ETX run ${run}/${RUNS} with ${VERSION_PREFIX} Expected Arrival Time comparison condition"
   ./ns3 run "scratch/P-OLSR/polsr_protocol_experiment --protocol=OLSR-ETX --runIndex=${run} --rngRun=${run} ${COMMON_ARGS}"
 
-  echo "Running P-OLSR run ${run}/${RUNS} with Expected Arrival Time HELLO decay and UsePredictionForMpr=false"
+  echo "Running P-OLSR run ${run}/${RUNS} with Expected Arrival Time HELLO decay factor ${HELLO_DEADLINE_FACTOR} and UsePredictionForMpr=false"
   ./ns3 run "scratch/P-OLSR/polsr_protocol_experiment --protocol=P-OLSR --usePredictionForMpr=false --runIndex=${run} --rngRun=${run} ${COMMON_ARGS}"
 done
 

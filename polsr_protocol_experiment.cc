@@ -117,6 +117,7 @@ struct ExperimentOptions
     double predictionAlpha{0.05};
     double predictionBeta{0.2};
     double predictionGamma{0.04};
+    double helloDeadlineFactor{1.5};
     double predictionValidityMultiplier{3.0};
     double outageWindow{1.0};
     double outageDlrThreshold{0.2};
@@ -445,6 +446,7 @@ InstallRouting(NodeContainer nodes, const std::string& protocol, const Experimen
         polsr.Set("PredictionAlpha", DoubleValue(options.predictionAlpha));
         polsr.Set("PredictionBeta", DoubleValue(protocol == "OLSR-ETX" ? 0.0 : options.predictionBeta));
         polsr.Set("PredictionGamma", DoubleValue(options.predictionGamma));
+        polsr.Set("HelloDeadlineFactor", DoubleValue(options.helloDeadlineFactor));
         polsr.Set("PredictionValidityTime",
                   TimeValue(Seconds(options.predictionValidityMultiplier * options.helloInterval)));
         list.Add(polsr, 100);
@@ -617,7 +619,7 @@ RunExperiment(const std::string& scenario,
         "paper_lost_packets,paper_pdr,paper_dlr,outage_time_s,outage_ratio,"
         "outage_window_s,outage_dlr_threshold,max_delivery_delay_s,"
         "delayed_over_max_packets,use_prediction_for_routing,use_prediction_for_mpr,"
-        "prediction_alpha,prediction_beta,prediction_gamma,wireless_profile,"
+        "prediction_alpha,prediction_beta,prediction_gamma,hello_deadline_factor,wireless_profile,"
         "paper_dlr_max_extra_loss_db,notes";
     const bool exists = std::filesystem::exists(csvPath);
     ValidateCsvHeader(csvPath, csvHeader);
@@ -647,7 +649,8 @@ RunExperiment(const std::string& scenario,
         << options.maxDeliveryDelay << ',' << deliveryTracker.latePackets << ','
         << options.usePredictionForRouting << ',' << options.usePredictionForMpr << ','
         << options.predictionAlpha << ',' << effectivePredictionBeta << ','
-        << options.predictionGamma << ',' << options.wirelessProfile << ','
+        << options.predictionGamma << ',' << options.helloDeadlineFactor << ','
+        << options.wirelessProfile << ','
         << options.paperDlrMaxExtraLossDb
         << ",local_polsr_copy_no_src_olsr_modification\n";
 
@@ -655,7 +658,7 @@ RunExperiment(const std::string& scenario,
         std::filesystem::path(outputDir) / "polsr_goodput_timeseries.csv";
     const std::string timeSeriesHeader =
         "run_index,rng_run,scenario,protocol,hello_interval_s,prediction_alpha,prediction_beta,"
-        "prediction_gamma,use_prediction_for_routing,use_prediction_for_mpr,"
+        "prediction_gamma,hello_deadline_factor,use_prediction_for_routing,use_prediction_for_mpr,"
         "wireless_profile,paper_dlr_max_extra_loss_db,"
         "window_s,time_s,tx_packets,rx_packets,rx_bytes,goodput_mbps";
     const bool timeSeriesExists = std::filesystem::exists(timeSeriesPath);
@@ -679,7 +682,8 @@ RunExperiment(const std::string& scenario,
         timeSeriesCsv << options.runIndex << ',' << options.rngRun << ',' << scenario << ','
                       << protocol << ',' << options.helloInterval << ','
                       << options.predictionAlpha << ',' << effectivePredictionBeta << ','
-                      << options.predictionGamma << ',' << options.usePredictionForRouting << ','
+                      << options.predictionGamma << ',' << options.helloDeadlineFactor << ','
+                      << options.usePredictionForRouting << ','
                       << options.usePredictionForMpr << ',' << options.wirelessProfile << ','
                       << options.paperDlrMaxExtraLossDb << ',' << options.outageWindow << ','
                       << time << ',' << deliveryTracker.txByBin[i] << ','
@@ -716,6 +720,9 @@ main(int argc, char* argv[])
     cmd.AddValue("predictionAlpha", "P-OLSR HELLO reception smoothing alpha", options.predictionAlpha);
     cmd.AddValue("predictionBeta", "P-OLSR speed-weighted ETX beta", options.predictionBeta);
     cmd.AddValue("predictionGamma", "P-OLSR relative-speed smoothing gamma", options.predictionGamma);
+    cmd.AddValue("helloDeadlineFactor",
+                 "HELLO deadline multiplier for Expected Arrival Time decay",
+                 options.helloDeadlineFactor);
     cmd.AddValue("predictionValidityMultiplier",
                  "Prediction validity time as a multiple of Hello interval",
                  options.predictionValidityMultiplier);

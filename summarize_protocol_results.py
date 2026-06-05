@@ -34,6 +34,18 @@ SUMMARY_METRICS = (
     "delayed_over_max_packets",
 )
 
+CONFIG_FIELDS = (
+    "hello_interval_s",
+    "prediction_alpha",
+    "prediction_beta",
+    "prediction_gamma",
+    "hello_deadline_factor",
+    "use_prediction_for_routing",
+    "use_prediction_for_mpr",
+    "wireless_profile",
+    "paper_dlr_max_extra_loss_db",
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Average repeated protocol experiment CSV files.")
@@ -71,12 +83,19 @@ def sample_std(values: Iterable[float]) -> float:
     return math.sqrt(variance)
 
 
+def stable_value(rows: Sequence[Dict[str, str]], field: str) -> str:
+    values = sorted({row.get(field, "") for row in rows if row.get(field, "") != ""})
+    if len(values) <= 1:
+        return values[0] if values else ""
+    return "|".join(values)
+
+
 def write_summary_average(rows: Sequence[Dict[str, str]], output_path: Path) -> None:
     groups: Dict[Tuple[str, str], List[Dict[str, str]]] = defaultdict(list)
     for row in rows:
         groups[(row.get("scenario", ""), row.get("protocol", ""))].append(row)
 
-    fieldnames = ["scenario", "protocol", "runs"]
+    fieldnames = ["scenario", "protocol", "runs", *CONFIG_FIELDS]
     for metric in SUMMARY_METRICS:
         fieldnames.extend((f"avg_{metric}", f"std_{metric}"))
 
@@ -89,6 +108,8 @@ def write_summary_average(rows: Sequence[Dict[str, str]], output_path: Path) -> 
                 "protocol": protocol,
                 "runs": len(group_rows),
             }
+            for field in CONFIG_FIELDS:
+                out[field] = stable_value(group_rows, field)
             for metric in SUMMARY_METRICS:
                 values = [
                     value
@@ -101,17 +122,23 @@ def write_summary_average(rows: Sequence[Dict[str, str]], output_path: Path) -> 
 
 
 def write_timeseries_average(rows: Sequence[Dict[str, str]], output_path: Path) -> None:
-    groups: Dict[Tuple[str, str, float, float], List[Dict[str, str]]] = defaultdict(list)
+    groups: Dict[Tuple[str, str, Tuple[str, ...], float, float], List[Dict[str, str]]] = defaultdict(
+        list
+    )
     for row in rows:
         time = to_float(row.get("time_s", ""))
         window = to_float(row.get("window_s", ""))
         if time is None or window is None:
             continue
-        groups[(row.get("scenario", ""), row.get("protocol", ""), window, time)].append(row)
+        config_values = tuple(row.get(field, "") for field in CONFIG_FIELDS)
+        groups[(row.get("scenario", ""), row.get("protocol", ""), config_values, window, time)].append(
+            row
+        )
 
     fieldnames = [
         "scenario",
         "protocol",
+        *CONFIG_FIELDS,
         "window_s",
         "time_s",
         "runs",
@@ -124,16 +151,18 @@ def write_timeseries_average(rows: Sequence[Dict[str, str]], output_path: Path) 
     with output_path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
-        for (scenario, protocol, window, time), group_rows in sorted(groups.items()):
+        for (scenario, protocol, config_values, window, time), group_rows in sorted(groups.items()):
             goodput_values = [
                 value
                 for value in (to_float(row.get("goodput_mbps", "")) for row in group_rows)
                 if value is not None
             ]
+            config_out = dict(zip(CONFIG_FIELDS, config_values))
             writer.writerow(
                 {
                     "scenario": scenario,
                     "protocol": protocol,
+                    **config_out,
                     "window_s": window,
                     "time_s": time,
                     "runs": len(group_rows),
