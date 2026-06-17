@@ -263,17 +263,17 @@ RoutingProtocol::GetTypeId()
                           MakeDoubleChecker<double>(0.0, 1.0))
             .AddAttribute("PredictionBeta",
                           "Exponential penalty factor for positive relative speed in weighted ETX.",
-                          DoubleValue(0.05),
+                          DoubleValue(0.2),
                           MakeDoubleAccessor(&RoutingProtocol::m_predictionBeta),
                           MakeDoubleChecker<double>(0.0))
             .AddAttribute("PredictionGamma",
                           "Smoothing factor for relative speed.",
-                          DoubleValue(0.2),
+                          DoubleValue(0.08),
                           MakeDoubleAccessor(&RoutingProtocol::m_predictionGamma),
                           MakeDoubleChecker<double>(0.0, 1.0))
             .AddAttribute("HelloDeadlineFactor",
                           "HELLO deadline multiplier used by Expected Arrival Time decay.",
-                          DoubleValue(1.5),
+                          DoubleValue(1.4),
                           MakeDoubleAccessor(&RoutingProtocol::m_helloDeadlineFactor),
                           MakeDoubleChecker<double>(1.0))
             .AddAttribute("MinPredictionQuality",
@@ -312,12 +312,12 @@ RoutingProtocol::RoutingProtocol()
       m_usePredictionForRouting(false),
       m_usePredictionForMpr(false),
       m_predictionAlpha(0.2),
-      m_predictionBeta(0.05), //链路质量老化
-      m_predictionGamma(0.2),
+      m_predictionBeta(0.2), //链路质量老化
+      m_predictionGamma(0.08),
       m_minPredictionQuality(0.01),
       m_maxPredictionCost(1000.0),
       m_predictionValidityTime(Seconds(6)),
-      m_helloDeadlineFactor(1.5),
+      m_helloDeadlineFactor(1.4),
       m_ipv4(nullptr),
       m_helloTimer(Timer::CANCEL_ON_DESTROY),
       m_tcTimer(Timer::CANCEL_ON_DESTROY),

@@ -111,13 +111,13 @@ constexpr double kPi = 3.14159265358979323846;
 
 struct ExperimentOptions
 {
-    double helloInterval{0.5};
+    double helloInterval{1.0};
     bool usePredictionForRouting{true};
     bool usePredictionForMpr{false};
-    double predictionAlpha{0.05};
+    double predictionAlpha{0.2};
     double predictionBeta{0.2};
-    double predictionGamma{0.04};
-    double helloDeadlineFactor{1.5};
+    double predictionGamma{0.08};
+    double helloDeadlineFactor{1.4};
     double predictionValidityMultiplier{3.0};
     double outageWindow{1.0};
     double outageDlrThreshold{0.2};
