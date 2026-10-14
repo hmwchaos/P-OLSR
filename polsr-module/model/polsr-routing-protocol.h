@@ -444,7 +444,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
     Vector LookupOwnVelocity() const;
 
     /**
-     * @brief 计算两节点沿连线方向的相对速度。
+     * @brief 计算两节点沿连线方向的相对速度，径向相对速度。
      */
     double ComputeRadialRelativeSpeed(const Vector& localPosition,
                                       const Vector& localVelocity,
@@ -453,6 +453,8 @@ class RoutingProtocol : public Ipv4RoutingProtocol
 
     /**
      * @brief 将 HELLO 中携带的 GPS/ETX 字段转换为链路预测指标。
+     * 收到Hello,更新完LinkSet,NeighborSet后运行
+     * 现在使用的是根据连续两次 HELLO 的节点距离变化计算的带正负号径向相对速度，同时还会融合邻居 HELLO 回告的 relativeSpeed。
      */
     void UpdatePredictionFromHello(const polsr::MessageHeader& msg,
                                    const polsr::MessageHeader::Hello& hello,
@@ -461,6 +463,7 @@ class RoutingProtocol : public Ipv4RoutingProtocol
 
     /**
      * @brief 对错过 HELLO 周期的链路执行 h_l=0 的 ETX 接收率衰减。
+     * 在发送Hello包前运行
      */
     void ApplyHelloLossDecay();
 

@@ -19,3 +19,6 @@ tmp/
 
 # Generated experiment figures
 figures/
+
+# 忽略所有实验结果文件
+protocol-results/

@@ -199,19 +199,19 @@ struct LinkTuple
     double predictedCost{1.0};
     /// P-OLSR: 上一次更新上述预测字段的仿真时间。
     Time predictionTime;
-    /// P-OLSR: Next nominal HELLO arrival used by Expected Arrival Time decay.
-    Time nextExpectedHelloTime;
-    /// P-OLSR: HELLO loss deadline after jitter tolerance.
+    /// P-OLSR: 下一个理论上的 HELLO 到达时间，用于 Expected Arrival Time（预计到达时间）的衰减计算。
+    Time nextExpectedHelloTime; // 下一个预期的 HELLO 到达时间，用于计算预计到达时间衰减。
+    /// P-OLSR: 考虑抖动（jitter）容忍后的 HELLO 丢失截止时间。
     Time helloDeadlineTime;
-    /// P-OLSR: Whether nextExpectedHelloTime and helloDeadlineTime are initialized.
+    /// P-OLSR: nextExpectedHelloTime 和 helloDeadlineTime 是否已经初始化。
     bool helloDeadlineValid{false};
-    /// P-OLSR: 是否已经收到过足够的信息，可把 predictedCost 当作有效值。
+    /// P-OLSR: 表示这条链路的 phi、rho、relativeSpeed、predictedCost 是否已经经过有效 HELLO 更新，可以参与预测计算。
     bool predictionValid{false};
     /// P-OLSR: 上一次本节点和邻居之间的距离，用于估算距离变化率。
     double previousDistance{0.0};
-    /// P-OLSR: 上一次距离采样时间。
+    /// P-OLSR: 上一次两节点的相对距离采样时间。
     Time previousPredictionTime;
-    /// P-OLSR: 是否已经有上一轮距离采样。
+    /// P-OLSR: 是否已经有上一次两节点的相对距离采样。
     bool previousDistanceValid{false};
 };
 
@@ -356,7 +356,9 @@ struct TopologyTuple
     Ipv4Address destAddr;
     /// 目的节点的邻居节点主地址。
     Ipv4Address lastAddr;
-    /// TC 消息的序列号,避免旧 TC 消息把新的拓扑表改乱。
+    /// TC 消息携带的 ANSN（Advertised Neighbor Sequence Number）。
+    /// 表示 TC Originator 的通告邻居集合版本，
+    /// 用于识别并处理过期的拓扑信息。
     uint16_t sequenceNumber;
     /// tuple 到期并需要被删除的时间。如果超过 expirationTime 还没有收到新的 TC 消息更新它，就说明这条拓扑关系可能已经失效，需要删除.
     Time expirationTime;
@@ -415,19 +417,19 @@ struct NodeMotionTuple
 {
     /// Node main address.
     Ipv4Address mainAddr;
-    /// Last advertised position mapped as (longitude, latitude, altitude).
+    /// 最近一次广播的位置，表示为（经度、纬度、海拔）
     Vector position;
-    /// Last advertised longitude.
+    /// 最近一次广播的经度。
     double longitude{0.0};
-    /// Last advertised latitude.
+    /// 最近一次广播的纬度。
     double latitude{0.0};
-    /// Last advertised altitude.
+    /// 最近一次广播的海拔。
     double altitude{0.0};
-    /// Time when the tuple was updated.
+    /// 该信息元组最近一次被更新的时间。
     Time updateTime;
-    /// Expiration time for the cached motion information.
+    /// 缓存中的运动信息的过期时间。
     Time expirationTime;
-    /// Whether the motion values are valid.
+    /// 这些运动数据是否有效。
     bool valid{false};
 };
 

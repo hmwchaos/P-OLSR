@@ -6,7 +6,7 @@ NS3_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 cd "${NS3_ROOT}"
 
-RUNS="${RUNS:-10}"
+RUNS="${RUNS:-1}"
 VERSION_PREFIX="${VERSION_PREFIX:-V1.7}"
 HI="${HI:-1.0}"
 ALPHA="${ALPHA:-0.1}"

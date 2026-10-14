@@ -389,8 +389,8 @@ class MessageHeader : public Header
             struct NeighborLinkQuality
             {
                 Ipv4Address address;               //!< 邻居接口地址。
-                double forwardReceivingRatio{1.0}; //!< P-OLSR/ETX: 正向接收率 phi。
-                double reverseReceivingRatio{1.0}; //!< P-OLSR/ETX: 反向接收率 rho。
+                double forwardReceivingRatio{0.0}; //!< P-OLSR/ETX: 正向接收率 phi。
+                double reverseReceivingRatio{0.0}; //!< P-OLSR/ETX: 反向接收率 rho。
                 double relativeSpeed{0.0};         //!< P-OLSR: 平滑后的相对速度。
                 bool qualityValid{false};          //!< 是否携带有效链路质量字段。
             };

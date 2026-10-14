@@ -55,24 +55,24 @@
 /// @brief Gets the delay between a given time and the current time.
 ///
 /// If given time is previous to the current one, then this macro returns
-/// a number close to 0. This is used for scheduling events at a certain moment.
+/// 一个接近 0 的时间值。该宏用于把事件调度到指定时刻。
 ///
 #define DELAY(time)                                                                                \
     (((time) < (Simulator::Now())) ? Seconds(0.000001)                                             \
                                    : (time - Simulator::Now() + Seconds(0.000001)))
 
 ///
-/// @brief Period at which a node must cite every link and every neighbor.
+/// @brief 节点必须重新通告每条链路和每个邻居的周期。
 ///
-/// We only use this value in order to define POLSR_NEIGHB_HOLD_TIME.
+/// 这里只使用该值来定义 POLSR_NEIGHB_HOLD_TIME。
 ///
 #define POLSR_REFRESH_INTERVAL m_helloInterval
 
-/********** Holding times **********/
+/********** 保持时间 **********/
 
-/// Neighbor holding time.
+/// 邻居信息保持时间。
 #define POLSR_NEIGHB_HOLD_TIME Time(3 * POLSR_REFRESH_INTERVAL)
-/// Top holding time.
+/// 拓扑信息保持时间。
 #define POLSR_TOP_HOLD_TIME Time(3 * m_tcInterval)
 /// Dup holding time.
 #define POLSR_DUP_HOLD_TIME Seconds(30)
@@ -81,7 +81,7 @@
 /// HNA holding time.
 #define POLSR_HNA_HOLD_TIME Time(3 * m_hnaInterval)
 
-/********** Miscellaneous constants **********/
+/********** 其他常量 **********/
 
 /// Maximum allowed jitter.
 #define POLSR_MAXJITTER (m_helloInterval.GetSeconds() / 4)
@@ -115,10 +115,10 @@ namespace polsr
  */
 enum class LinkType : uint8_t
 {
-    UNSPEC_LINK = 0, //!< Unspecified link type
-    ASYM_LINK = 1,   //!< Asymmetric link type
-    SYM_LINK = 2,    //!< Symmetric link type
-    LOST_LINK = 3,   //!< Lost link type
+    UNSPEC_LINK = 0, //!< 未指定链路类型
+    ASYM_LINK = 1,   //!< 非对称链路类型
+    SYM_LINK = 2,    //!< 对称链路类型
+    LOST_LINK = 3,   //!< 丢失链路类型
 };
 
 /**
@@ -730,7 +730,7 @@ RoutingProtocol::Degree(const NeighborTuple& tuple)
         if (nb2hop_tuple.neighborMainAddr == tuple.neighborMainAddr)
         {
             const NeighborTuple* nb_tuple =
-                m_state.FindNeighborTuple(nb2hop_tuple.neighborMainAddr);
+                m_state.FindNeighborTuple(nb2hop_tuple.twoHopNeighborAddr);
             if (nb_tuple == nullptr)
             {
                 degree++;
@@ -781,12 +781,12 @@ RoutingProtocol::MprComputation()
 {
     NS_LOG_FUNCTION(this);
 
-    // MPR computation should be done for each interface. See section 8.3.1
-    // (RFC 3626) for details.
+    // MPR 计算应针对每个接口分别进行，参见 RFC 3626 第 8.3.1 节。
+    // 具体规则见 RFC 3626。
     MprSet mprSet;
 
-    // N is the subset of neighbors of the node, which are
-    // neighbor "of the interface I"
+    // N 表示本节点邻居集合中的一个子集，
+    // 即“接口 I 上的邻居”。
     NeighborSet N;
     for (auto neighbor = m_state.GetNeighbors().begin(); neighbor != m_state.GetNeighbors().end();
          neighbor++)
@@ -797,26 +797,26 @@ RoutingProtocol::MprComputation()
         }
     }
 
-    // N2 is the set of 2-hop neighbors reachable from "the interface
-    // I", excluding:
-    // (i)   the nodes only reachable by members of N with willingness Willingness::NEVER
-    // (ii)  the node performing the computation
-    // (iii) all the symmetric neighbors: the nodes for which there exists a symmetric
-    //       link to this node on some interface.
+    // N2 表示从“接口 I 上的邻居”可以到达的二跳邻居集合，
+    // 但需要排除以下情况：
+    // (i) 只能通过 willingness 为 Willingness::NEVER 的 N 成员到达的节点；
+    // (ii) 正在执行 MPR 计算的本节点；
+    // (iii) 所有对称一跳邻居，也就是那些已经存在对称链路的节点。
+    // 这些节点已经通过某个接口与本节点存在对称链路。
     TwoHopNeighborSet N2;
     for (auto twoHopNeigh = m_state.GetTwoHopNeighbors().begin();
          twoHopNeigh != m_state.GetTwoHopNeighbors().end();
          twoHopNeigh++)
     {
-        // excluding:
-        // (ii)  the node performing the computation
+        // 排除：
+        // (ii) 正在执行 MPR 计算的本节点；
         if (twoHopNeigh->twoHopNeighborAddr == m_mainAddress)
         {
             continue;
         }
 
-        //  excluding:
-        // (i)   the nodes only reachable by members of N with willingness Willingness::NEVER
+        //  排除：
+        // (i) 只能通过 willingness 为 Willingness::NEVER 的 N 成员到达的节点；
         bool ok = false;
         for (auto neigh = N.begin(); neigh != N.end(); neigh++)
         {
@@ -831,9 +831,9 @@ RoutingProtocol::MprComputation()
             continue;
         }
 
-        // excluding:
-        // (iii) all the symmetric neighbors: the nodes for which there exists a symmetric
-        //       link to this node on some interface.
+        // 排除：
+        // (iii) 所有对称一跳邻居，也就是那些已经存在对称链路的节点。
+        // 这些节点已经通过某个接口与本节点存在对称链路。
         for (auto neigh = N.begin(); neigh != N.end(); neigh++)
         {
             if (neigh->neighborMainAddr == twoHopNeigh->twoHopNeighborAddr)
@@ -868,24 +868,24 @@ RoutingProtocol::MprComputation()
     }
 #endif // NS3_LOG_ENABLE
 
-    // 1. Start with an MPR set made of all members of N with
-    // N_willingness equal to Willingness::ALWAYS
+    // 1. 初始 MPR 集合先放入 N 中所有 willingness 为 WILL_ALWAYS 的邻居。
+    // 这些邻居的 N_willingness 等于 Willingness::ALWAYS。
     for (auto neighbor = N.begin(); neighbor != N.end(); neighbor++)
     {
         if (neighbor->willingness == Willingness::ALWAYS)
         {
             mprSet.insert(neighbor->neighborMainAddr);
             // (not in RFC but I think is needed: remove the 2-hop
-            // neighbors reachable by the MPR from N2)
+            // 从 N2 中移除该 MPR 能够到达的二跳邻居。
             CoverTwoHopNeighbors(neighbor->neighborMainAddr, N2);
         }
     }
 
-    // 2. Calculate D(y), where y is a member of N, for all nodes in N.
-    // (we do this later)
+    // 2. 对 N 中每个节点 y 计算 D(y)。
+    // 这里稍后再计算。
 
-    // 3. Add to the MPR set those nodes in N, which are the *only*
-    // nodes to provide reachability to a node in N2.
+    // 3. 将 N 中唯一能到达某些二跳邻居的节点加入 MPR 集合。
+    // 也就是说，如果某个二跳邻居只能通过一个一跳邻居到达，该一跳邻居必须成为 MPR。
     std::set<Ipv4Address> coveredTwoHopNeighbors;
     for (auto twoHopNeigh = N2.begin(); twoHopNeigh != N2.end(); twoHopNeigh++)
     {
@@ -908,7 +908,7 @@ RoutingProtocol::MprComputation()
 
             mprSet.insert(twoHopNeigh->neighborMainAddr);
 
-            // take note of all the 2-hop neighbors reachable by the newly elected MPR
+            // 记录所有能够通过新选出的 MPR 到达的二跳邻居。
             for (auto otherTwoHopNeigh = N2.begin(); otherTwoHopNeigh != N2.end();
                  otherTwoHopNeigh++)
             {
@@ -925,9 +925,9 @@ RoutingProtocol::MprComputation()
         if (coveredTwoHopNeighbors.find(twoHopNeigh->twoHopNeighborAddr) !=
             coveredTwoHopNeighbors.end())
         {
-            // This works correctly only because it is known that twoHopNeigh is reachable by
-            // exactly one neighbor, so only one record in N2 exists for each of them. This record
-            // is erased here.
+            // 这里之所以能正确工作，是因为已知 twoHopNeigh 只通过
+            // 一个邻居可达，因此 N2 中每个这样的节点只会有一条记录。
+            // 这里删除的正是这条记录。
             NS_LOG_LOGIC("2-hop neigh. " << twoHopNeigh->twoHopNeighborAddr
                                          << " is already covered by an MPR.");
             twoHopNeigh = N2.erase(twoHopNeigh);
@@ -938,8 +938,8 @@ RoutingProtocol::MprComputation()
         }
     }
 
-    // 4. While there exist nodes in N2 which are not covered by at
-    // least one node in the MPR set:
+    // 4. 只要 N2 中仍存在未被至少一个 MPR 覆盖的节点，
+    // 就继续执行选择过程。
     while (N2.begin() != N2.end())
     {
 #ifdef NS3_LOG_ENABLE
@@ -961,10 +961,10 @@ RoutingProtocol::MprComputation()
         }
 #endif // NS3_LOG_ENABLE
 
-        // 4.1. For each node in N, calculate the reachability, i.e., the
-        // number of nodes in N2 which are not yet covered by at
-        // least one node in the MPR set, and which are reachable
-        // through this 1-hop neighbor
+        // 4.1. 对 N 中每个节点计算 reachability，
+        // 即该节点还能覆盖多少尚未被当前 MPR 集合覆盖的 N2 节点。
+        // 这些节点必须能通过该候选一跳邻居到达。
+        // 也就是通过这个一跳邻居可达。
         std::map<int, std::vector<const NeighborTuple*>> reachability;
         std::set<int> rs;
         for (auto it = N.begin(); it != N.end(); it++)
@@ -983,14 +983,14 @@ RoutingProtocol::MprComputation()
             reachability[r].push_back(&nb_tuple);
         }
 
-        // 4.2. Select as a MPR the node with highest N_willingness among
-        // the nodes in N with non-zero reachability. In case of
-        // multiple choice select the node which provides
-        // reachability to the maximum number of nodes in N2. In
-        // case of multiple nodes providing the same amount of
-        // reachability, select the node as MPR whose D(y) is
-        // greater. Remove the nodes from N2 which are now covered
-        // by a node in the MPR set.
+        // 4.2. 在仍能覆盖未覆盖二跳邻居的节点中，优先选择 N_willingness 最大的节点作为 MPR。
+        // 如果多个节点的 willingness 相同，
+        // 则选择可达性更高的节点。
+        // 也就是优先覆盖更多 N2 节点的候选节点。
+        // 如果覆盖数量仍然相同，
+        // 则选择 D(y) 更大的节点作为 MPR。
+        // 选定后，从 N2 中移除已经被该 MPR 覆盖的二跳邻居。
+        // 这些节点已经由 MPR 集合保证可达。
         const NeighborTuple* max = nullptr;
         int max_r = 0;
         for (auto it = rs.begin(); it != rs.end(); it++)
@@ -1166,8 +1166,8 @@ RoutingProtocol::UpdatePredictionFromHello(const polsr::MessageHeader& msg,
         return;
     }
 
-    Time now = Simulator::Now();
-    m_state.PurgeExpiredNodeMotionTuples(now);
+    Time now = Simulator::Now(); //
+    m_state.PurgeExpiredNodeMotionTuples(now); // 清理过期的邻居运动信息
 
     LinkTuple* link = m_state.FindLinkTuple(receiverIface, senderIface);
     if (!link)
@@ -1176,7 +1176,7 @@ RoutingProtocol::UpdatePredictionFromHello(const polsr::MessageHeader& msg,
     }
 
     Vector neighborPosition(hello.longitude, hello.latitude, hello.altitude);
-    if (hello.hasGps)
+    if (hello.hasGps) //
     {
         // ns-3 场景通常使用本地米制坐标；这里按论文字段名放入经度/纬度/高度槽位。
         m_state.UpdateNodeMotionTuple(msg.GetOriginatorAddress(),
@@ -1185,9 +1185,10 @@ RoutingProtocol::UpdatePredictionFromHello(const polsr::MessageHeader& msg,
                                       hello.latitude,
                                       hello.altitude,
                                       now,
-                                      now + m_predictionValidityTime);
+                                      now + m_predictionValidityTime); //m_predictionValidityTime 预测有效时间
     }
 
+    /*对phi进行更新，rho和relativeSpeed继承上一次的值*/
     double phi = (1.0 - m_predictionAlpha) * link->phi + m_predictionAlpha;
     double rho = link->rho;
     double relativeSpeed = link->relativeSpeed;
@@ -1238,7 +1239,7 @@ RoutingProtocol::UpdatePredictionFromHello(const polsr::MessageHeader& msg,
             if (dt > 0.0)
             {
                 double sampledRelativeSpeed = (distance - link->previousDistance) / dt;
-                if (std::isfinite(sampledRelativeSpeed))
+                if (std::isfinite(sampledRelativeSpeed)) //
                 {
                     relativeSpeed = m_predictionGamma * sampledRelativeSpeed +
                                     (1.0 - m_predictionGamma) * relativeSpeed;
@@ -1303,6 +1304,7 @@ RoutingProtocol::ApplyHelloLossDecay()
     {
         if (!link.predictionValid || link.time < now)
         {
+            /*这条链路还没有有效的预测信息或这条链路已经过期，跳过这条链路，不参与后面的计算。*/
             continue;
         }
 
@@ -1458,10 +1460,70 @@ RoutingProtocol::PredictiveRoutingTableComputation()
      * 最终写入 m_table 的接口仍是 AddEntry()，distance 字段仍保存跳数，
      * 这样不会破坏 ns-3 Ipv4RoutingProtocol 对路由表项的使用方式。
      */
+    /*
+     * P-OLSR 预测路由表计算入口。
+     *
+     * 这个函数只在同时满足：
+     *   m_enablePrediction == true
+     *   m_usePredictionForRouting == true
+     * 时由 RoutingTableComputation() 调用。
+     *
+     * 原始 OLSR 的 RoutingTableComputation() 主要按跳数扩展路由表：
+     *   1. 一跳邻居 distance = 1；
+     *   2. 二跳邻居 distance = 2；
+     *   3. TC 拓扑信息继续按 h + 1 逐层扩展。
+     *
+     * 这里的预测路由计算不再单纯比较 hop-count，而是先把当前节点已知的
+     * Link Set、TwoHopNeighbor Set、Topology Set 转换成一张带权有向图，
+     * 再用类似 Dijkstra 的方式选择累计 predictedCost 最小的路径。
+     *
+     * 图中边的来源：
+     *   1. 本节点 -> 一跳邻居：
+     *      来自 LinkTuple。
+     *      如果 link.predictionValid 为 true，使用 link.predictedCost；
+     *      否则使用 cost = 1.0，退化为普通 OLSR 的无权边。
+     *
+     *   2. 一跳邻居 -> 二跳邻居：
+     *      来自 HELLO 处理后维护的 TwoHopNeighborTuple。
+     *      当前节点不能直接测量“邻居到二跳节点”这条边的相对速度、
+     *      phi/rho 或 predictedCost，所以这里固定使用 cost = 1.0。
+     *
+     *   3. TC 中的拓扑边：
+     *      来自 TopologyTuple。
+     *      如果远端 P-OLSR 节点在 TC 中携带了 prediction 信息，
+     *      使用 topologyTuple.predictedCost；
+     *      如果是普通 OLSR TC 或 predictionValid 为 false，
+     *      同样退化为 cost = 1.0。
+     *
+     * 注意：
+     *   predictedCost 只影响“选哪条路径”。
+     *   最终 AddEntry() 写入 m_table 时，distance 字段仍然保存跳数 hops，
+     *   这样不会改变 ns-3 Ipv4RoutingProtocol 使用路由表项的方式。
+     */
     NS_LOG_DEBUG(Simulator::Now().As(Time::S)
                  << " : Node " << m_mainAddress
                  << ": PredictiveRoutingTableComputation begin...");
 
+    /*
+     * PredictiveEdge 表示带权图中的一条边。
+     *
+     * to:
+     *   这条边指向的目标地址。
+     *
+     * nextHop:
+     *   如果这条边是从本节点 m_mainAddress 发出的第一跳边，
+     *   nextHop 保存真正要发给的下一跳接口地址。
+     *   对二跳边和 TC 拓扑边，本函数后面会继承路径上的 firstHop，
+     *   因此这里可以暂时为空地址。
+     *
+     * localIface:
+     *   本节点发往 firstHop 时使用的本地接口地址。
+     *   只有第一跳边需要设置，后续多跳边会沿用第一跳的 localIface。
+     *
+     * cost:
+     *   这条边的预测代价，通常来自 predictedCost。
+     *   没有预测信息时使用 1.0。
+     */
     struct PredictiveEdge
     {
         Ipv4Address to;
@@ -1469,7 +1531,29 @@ RoutingProtocol::PredictiveRoutingTableComputation()
         Ipv4Address localIface;
         double cost;
     };
-
+    /*
+     * PredictiveNodeState 保存从本节点到某个目的地址的当前最优路径状态。
+     *
+     * cost:
+     *   从 m_mainAddress 到该目的地址的累计预测代价。
+     *
+     * hops:
+     *   当前路径的跳数。它不参与主要代价比较，只在代价相同时作为 tie-breaker，
+     *   并且最终写入 RoutingTableEntry.distance。
+     *
+     * firstHop:
+     *   从本节点出发时应该交给哪个下一跳。
+     *   即使目的地址是多跳之外的节点，路由表里也只需要保存第一跳。
+     *
+     * localIface:
+     *   发往 firstHop 时使用的本地接口。
+     *
+     * reached:
+     *   表示这个目的地址是否已经被发现过。
+     *
+     * settled:
+     *   表示这个目的地址的最优代价是否已经确定。
+     */
     struct PredictiveNodeState
     {
         double cost{std::numeric_limits<double>::infinity()};
@@ -1480,6 +1564,17 @@ RoutingProtocol::PredictiveRoutingTableComputation()
         bool settled{false};
     };
 
+    /*
+    * 对边代价做保护。
+    *
+    * predictedCost 理论上来自 phi、rho、relativeSpeed 等预测量，
+    * 但如果上游计算出现 NaN、Inf 或非正数，直接进入 Dijkstra 会导致
+    * 路径比较异常。因此这里把非法代价退回 1.0。
+    *
+    * 注意这里没有强制 cost >= 1.0。
+    * 因为当前实现允许“接近中的链路”得到小于 1 的 speed-weighted ETX，
+    * 这样 P-OLSR 才能偏向预测更稳定或更有利的链路。
+    */
     auto clampCost = [this](double cost) {
         // 防止 NaN/Inf 或非正代价进入路径计算；速度加权 ETX 允许接近链路 cost < 1。
         if (!std::isfinite(cost) || cost <= 0.0)
@@ -1503,8 +1598,17 @@ RoutingProtocol::PredictiveRoutingTableComputation()
     for (const auto& link : linkSet)
     {
         /*
-         * 一跳边来自 Link Set。
-         * 只有当前仍为对称链路、且没有过期的邻居，才能作为可用下一跳。
+         * 一跳边来自 Link Set，是本节点能够直接发送数据的邻居链路。
+         *
+         * 只有同时满足：
+         *   1. link.symTime >= now，链路仍然是对称链路；
+         *   2. link.time >= now，LinkTuple 本身没有过期；
+         *   3. NeighborTuple 仍然是对称邻居；
+         * 才把它加入预测图。
+         *
+         * 如果 link.predictionValid 为 true，说明 UpdatePredictionFromHello()
+         * 或 ApplyHelloLossDecay() 已经给这条链路维护了有效 predictedCost。
+         * 否则使用 cost = 1.0，保持和普通 OLSR 一样的可达性。
          */
         if (link.symTime < now || link.time < now)
         {
@@ -1746,11 +1850,12 @@ RoutingProtocol::RoutingTableComputation()
     NS_LOG_DEBUG(Simulator::Now().As(Time::S)
                  << " : Node " << m_mainAddress << ": RoutingTableComputation begin...");
 
-    // 1. All the entries from the routing table are removed.
+    // 1. 首先清空原有路由表中的所有条目。
     Clear();
 
-    // 2. The new routing entries are added starting with the
-    // symmetric neighbors (h=1) as the destination nodes.
+    // 2. 新路由项从对称一跳邻居开始加入。
+    // 此时这些目的节点的跳数 h=1。
+    // 路由是接口级转发，必须落到具体链路上。
     const NeighborSet& neighborSet = m_state.GetNeighbors();
     for (auto it = neighborSet.begin(); it != neighborSet.end(); it++)
     {
@@ -1793,15 +1898,15 @@ RoutingProtocol::RoutingTableComputation()
                 }
             }
 
-            // If, in the above, no R_dest_addr is equal to the main
-            // address of the neighbor, then another new routing entry
-            // with MUST be added, with:
-            //      R_dest_addr  = main address of the neighbor;
-            //      R_next_addr  = L_neighbor_iface_addr of one of the
-            //                     associated link tuple with L_time >= current time;
-            //      R_dist       = 1;
-            //      R_iface_addr = L_local_iface_addr of the
-            //                     associated link tuple.
+            // 如果上面的处理没有产生 R_dest_addr 等于该邻居主地址的路由项，
+            // 则还必须额外添加一条新的路由项，
+            // 字段如下：
+            //      R_dest_addr  = 该邻居的主地址；
+            //      R_next_addr  = 某个关联 link tuple 的 L_neighbor_iface_addr；
+            //                     该 link tuple 的 L_time 必须不早于当前时间；
+            //      R_dist       = 1；
+            //      R_iface_addr = 该关联 link tuple 的 L_local_iface_addr。
+            //                     也就是本节点用于到达该邻居的本地接口地址。
             if (!nb_main_addr && lt != nullptr)
             {
                 NS_LOG_LOGIC("no R_dest_addr is equal to the main address of the neighbor "
@@ -1811,11 +1916,11 @@ RoutingProtocol::RoutingTableComputation()
         }
     }
 
-    //  3. for each node in N2, i.e., a 2-hop neighbor which is not a
-    //  neighbor node or the node itself, and such that there exist at
-    //  least one entry in the 2-hop neighbor set where
-    //  N_neighbor_main_addr correspond to a neighbor node with
-    //  willingness different of Willingness::NEVER,
+    //  3. 对 N2 中的每个节点，也就是既不是一跳邻居、
+    //  也不是本节点自己的二跳邻居，且至少存在
+    //  一个二跳邻居表项满足：
+    //  N_neighbor_main_addr 对应的一跳邻居节点
+    //  willingness 不等于 Willingness::NEVER。
     const TwoHopNeighborSet& twoHopNeighbors = m_state.GetTwoHopNeighbors();
     for (auto it = twoHopNeighbors.begin(); it != twoHopNeighbors.end(); it++)
     {
@@ -1823,7 +1928,7 @@ RoutingProtocol::RoutingTableComputation()
 
         NS_LOG_LOGIC("Looking at two-hop neighbor tuple: " << nb2hop_tuple);
 
-        // a 2-hop neighbor which is not a neighbor node or the node itself
+        // 该二跳邻居不能是一跳邻居，也不能是本节点自己。
         if (m_state.FindSymNeighborTuple(nb2hop_tuple.twoHopNeighborAddr))
         {
             NS_LOG_LOGIC("Two-hop neighbor tuple is also neighbor; skipped.");
@@ -1836,9 +1941,9 @@ RoutingProtocol::RoutingTableComputation()
             continue;
         }
 
-        // ...and such that there exist at least one entry in the 2-hop
-        // neighbor set where N_neighbor_main_addr correspond to a
-        // neighbor node with willingness different of Willingness::NEVER...
+        // 并且二跳邻居集合中至少存在一个条目，
+        // 其中 N_neighbor_main_addr 对应一个
+        // willingness 不等于 Willingness::NEVER 的一跳邻居。
         bool nb2hopOk = false;
         for (auto neighbor = neighborSet.begin(); neighbor != neighborSet.end(); neighbor++)
         {
@@ -1858,17 +1963,17 @@ RoutingProtocol::RoutingTableComputation()
             continue;
         }
 
-        // one selects one 2-hop tuple and creates one entry in the routing table with:
-        //                R_dest_addr  =  the main address of the 2-hop neighbor;
-        //                R_next_addr  = the R_next_addr of the entry in the
-        //                               routing table with:
-        //                                   R_dest_addr == N_neighbor_main_addr
-        //                                                  of the 2-hop tuple;
-        //                R_dist       = 2;
-        //                R_iface_addr = the R_iface_addr of the entry in the
-        //                               routing table with:
-        //                                   R_dest_addr == N_neighbor_main_addr
-        //                                                  of the 2-hop tuple;
+        // 选择一个二跳 tuple，并据此在路由表中创建一条路由项，字段如下：
+        //                R_dest_addr  = 二跳邻居的主地址；
+        //                R_next_addr  = 路由表中对应条目的 R_next_addr；
+        //                               该对应条目满足：
+        //                                   R_dest_addr == N_neighbor_main_addr，
+        //                                                  即二跳 tuple 中的一跳邻居主地址；
+        //                R_dist       = 2；
+        //                R_iface_addr = 路由表中对应条目的 R_iface_addr；
+        //                               该对应条目满足：
+        //                                   R_dest_addr == N_neighbor_main_addr，
+        //                                                  即二跳 tuple 中的一跳邻居主地址；
         RoutingTableEntry entry;
         bool foundEntry = Lookup(nb2hop_tuple.neighborMainAddr, entry);
         if (foundEntry)
@@ -1887,12 +1992,12 @@ RoutingProtocol::RoutingTableComputation()
     {
         bool added = false;
 
-        // 3.1. For each topology entry in the topology table, if its
-        // T_dest_addr does not correspond to R_dest_addr of any
-        // route entry in the routing table AND its T_last_addr
-        // corresponds to R_dest_addr of a route entry whose R_dist
-        // is equal to h, then a new route entry MUST be recorded in
-        // the routing table (if it does not already exist)
+        // 3.1. 对拓扑表中的每个拓扑条目，如果它的
+        // T_dest_addr 不对应路由表中任何路由项的 R_dest_addr，
+        // 并且它的 T_last_addr
+        // 对应某个 R_dist 为当前 h 的路由项的 R_dest_addr，
+        // 等于当前跳数 h，则必须记录一条新的路由项。
+        // 如果该路由项尚不存在，就加入路由表。
         const TopologySet& topology = m_state.GetTopologySet();
         for (auto it = topology.begin(); it != topology.end(); it++)
         {
@@ -1906,16 +2011,16 @@ RoutingProtocol::RoutingTableComputation()
             if (!have_destAddrEntry && have_lastAddrEntry && lastAddrEntry.distance == h)
             {
                 NS_LOG_LOGIC("Adding routing table entry based on the topology tuple.");
-                // then a new route entry MUST be recorded in
-                //                the routing table (if it does not already exist) where:
-                //                     R_dest_addr  = T_dest_addr;
-                //                     R_next_addr  = R_next_addr of the recorded
-                //                                    route entry where:
-                //                                    R_dest_addr == T_last_addr
-                //                     R_dist       = h+1; and
-                //                     R_iface_addr = R_iface_addr of the recorded
-                //                                    route entry where:
-                //                                       R_dest_addr == T_last_addr.
+                // 则必须记录一条新的路由项，
+                //                如果路由表中尚不存在该项，其字段如下：
+                //                     R_dest_addr  = T_dest_addr；
+                //                     R_next_addr  = 已有路由项的 R_next_addr；
+                //                                    该已有路由项满足：
+                //                                    R_dest_addr == T_last_addr。
+                //                     R_dist       = h + 1；
+                //                     R_iface_addr = 已有路由项的 R_iface_addr；
+                //                                    该已有路由项满足：
+                //                                       R_dest_addr == T_last_addr。
                 AddEntry(topology_tuple.destAddr,
                          lastAddrEntry.nextAddr,
                          lastAddrEntry.interface,
@@ -1938,11 +2043,11 @@ RoutingProtocol::RoutingTableComputation()
         }
     }
 
-    // 4. For each entry in the multiple interface association base
-    // where there exists a routing entry such that:
-    // R_dest_addr == I_main_addr (of the multiple interface association entry)
-    // AND there is no routing entry such that:
-    // R_dest_addr == I_iface_addr
+    // 4. 对多接口关联表中的每个条目，
+    // 如果存在满足以下条件的路由项：
+    // R_dest_addr 等于多接口关联条目的 I_main_addr，
+    // 并且不存在满足以下条件的路由项：
+    // R_dest_addr 等于 I_iface_addr，
     const IfaceAssocSet& ifaceAssocSet = m_state.GetIfaceAssocSet();
     for (auto it = ifaceAssocSet.begin(); it != ifaceAssocSet.end(); it++)
     {
@@ -1953,24 +2058,24 @@ RoutingProtocol::RoutingTableComputation()
         bool have_entry2 = Lookup(tuple.ifaceAddr, entry2);
         if (have_entry1 && !have_entry2)
         {
-            // then a route entry is created in the routing table with:
-            //       R_dest_addr  =  I_iface_addr (of the multiple interface
-            //                                     association entry)
-            //       R_next_addr  =  R_next_addr  (of the recorded route entry)
-            //       R_dist       =  R_dist       (of the recorded route entry)
-            //       R_iface_addr =  R_iface_addr (of the recorded route entry).
+            // 则为该接口地址创建一条新的路由项，字段如下：
+            //       R_dest_addr  = 多接口关联条目的 I_iface_addr；
+            //                                     也就是该节点的某个接口地址；
+            //       R_next_addr  = 已记录路由项的 R_next_addr；
+            //       R_dist       = 已记录路由项的 R_dist；
+            //       R_iface_addr = 已记录路由项的 R_iface_addr。
             AddEntry(tuple.ifaceAddr, entry1.nextAddr, entry1.interface, entry1.distance);
         }
     }
 
-    // 5. For each tuple in the association set,
-    //    If there is no entry in the routing table with:
-    //        R_dest_addr     == A_network_addr/A_netmask
-    //   and if the announced network is not announced by the node itself,
-    //   then a new routing entry is created.
+    // 5. 对 association 集合中的每个 tuple，
+    //    如果路由表中不存在满足以下条件的条目：
+    //        R_dest_addr == A_network_addr/A_netmask，
+    //   并且该被通告网络不是由本节点自己通告的，
+    //   则创建一条新的路由项。
     const AssociationSet& associationSet = m_state.GetAssociationSet();
 
-    // Clear HNA routing table
+    // 清空 HNA 路由表。
     for (uint32_t i = 0; i < m_hnaRoutingTable->GetNRoutes(); i++)
     {
         m_hnaRoutingTable->RemoveRoute(0);
@@ -1980,9 +2085,9 @@ RoutingProtocol::RoutingTableComputation()
     {
         const AssociationTuple& tuple = *it;
 
-        // Test if HNA associations received from other gateways
-        // are also announced by this node. In such a case, no route
-        // is created for this association tuple (go to the next one).
+        // 检查是否从其他网关收到了 HNA 关联信息。
+        // 是否也由本节点自己通告。如果是这种情况，就不为该 association tuple 创建路由，
+        // 而是直接处理下一个 association tuple。
         bool goToNextAssociationTuple = false;
         const Associations& localHnaAssociations = m_state.GetAssociations();
         NS_LOG_DEBUG("Nb local associations: " << localHnaAssociations.size());
@@ -2119,19 +2224,22 @@ RoutingProtocol::ProcessTc(const polsr::MessageHeader& msg, const Ipv4Address& s
     const polsr::MessageHeader::Tc& tc = msg.GetTc();
     Time now = Simulator::Now();
 
-    // 1. If the sender interface of this message is not in the symmetric
-    // 1-hop neighborhood of this node, the message MUST be discarded.
+    // 1. 如果该 message 的发送接口不属于本节点的对称
+    // 一跳邻居中，则必须丢弃该 message。
+    // 检查发送 TC 的接口是不是对称一跳邻居,如果不是就丢弃 TC 消息。
+    // 上一跳接口地址 senderIface 是 TC 消息的发送方接口地址,通常来自外层 IP 包的源地址.
     const LinkTuple* link_tuple = m_state.FindSymLinkTuple(senderIface, now);
     if (link_tuple == nullptr)
     {
         return;
     }
 
-    // 2. If there exist some tuple in the topology set where:
-    //    T_last_addr == originator address AND
+    // 2. 如果拓扑集合中存在某个 tuple 满足：
+    //    T_last_addr 等于 originator address，并且
     //    T_seq       >  ANSN,
-    // then further processing of this TC message MUST NOT be
-    // performed.
+    // 则不得继续处理该 TC message，
+    // 也就是直接停止处理。
+    //  检查 TC 是否过旧，如果 TC 消息里携带的 ANSN 比我记录的同一目的地、同一发送方的 ANSN 还旧，就丢弃 TC 消息。
     const TopologyTuple* topologyTuple =
         m_state.FindNewerTopologyTuple(msg.GetOriginatorAddress(), tc.ansn);
     if (topologyTuple != nullptr)
@@ -2139,14 +2247,16 @@ RoutingProtocol::ProcessTc(const polsr::MessageHeader& msg, const Ipv4Address& s
         return;
     }
 
-    // 3. All tuples in the topology set where:
-    //    T_last_addr == originator address AND
+    // 3. 拓扑集合中所有满足以下条件的 tuple：
+    //    T_last_addr 等于 originator address，并且
     //    T_seq       <  ANSN
-    // MUST be removed from the topology set.
+    // 这些旧拓扑信息必须从拓扑表中移除。
+    // 删除旧的拓扑记录
     m_state.EraseOlderTopologyTuples(msg.GetOriginatorAddress(), tc.ansn);
 
-    // 4. For each of the advertised neighbor main address received in
-    // the TC message:
+    // 4. 对 TC message 中收到的每一个被通告邻居主地址，
+    // 执行以下处理：
+    // 遍历 TC 中通告的邻居地址列表，更新拓扑表TopologyTuple
     for (auto i = tc.neighborAddresses.begin(); i != tc.neighborAddresses.end(); i++)
     {
         const Ipv4Address& addr = *i;
@@ -2174,11 +2284,11 @@ RoutingProtocol::ProcessTc(const polsr::MessageHeader& msg, const Ipv4Address& s
             }
         }
 
-        // 4.1. If there exist some tuple in the topology set where:
-        //      T_dest_addr == advertised neighbor main address, AND
-        //      T_last_addr == originator address,
-        // then the holding time of that tuple MUST be set to:
-        //      T_time      =  current time + validity time.
+        // 4.1. 如果拓扑集合中存在某个 tuple 满足：
+        //      T_dest_addr 等于被通告的邻居主地址，并且
+        //      T_last_addr 等于 originator address，
+        // 则必须把该 tuple 的保持时间设置为：
+        //      T_time = 当前时间 + 有效时间。
         TopologyTuple* topologyTuple = m_state.FindTopologyTuple(addr, msg.GetOriginatorAddress());
 
         if (topologyTuple != nullptr)
@@ -2196,13 +2306,13 @@ RoutingProtocol::ProcessTc(const polsr::MessageHeader& msg, const Ipv4Address& s
             }
         }
         else
-        {
-            // 4.2. Otherwise, a new tuple MUST be recorded in the topology
-            // set where:
-            //      T_dest_addr = advertised neighbor main address,
-            //      T_last_addr = originator address,
-            //      T_seq       = ANSN,
-            //      T_time      = current time + validity time.
+        {   //如果不存在，就新增,并安排过期删除定时器
+            // 4.2. 否则，必须在拓扑集合中记录一个新的 tuple，
+            // 其字段如下：
+            //      T_dest_addr = 被通告的邻居主地址，
+            //      T_last_addr = originator address，
+            //      T_seq = ANSN，
+            //      T_time = 当前时间 + 有效时间。
             TopologyTuple topologyTuple;
             topologyTuple.destAddr = addr;
             topologyTuple.lastAddr = msg.GetOriginatorAddress();
@@ -2220,7 +2330,8 @@ RoutingProtocol::ProcessTc(const polsr::MessageHeader& msg, const Ipv4Address& s
                                                  now);
             }
 
-            // Schedules topology tuple deletion
+            // 安排拓扑 tuple 的过期删除定时器。
+            // 根据 RFC 3626 的规定，拓扑表中的记录是有过期时间的，过期时间到了就要删除。这里就是为新添加的拓扑记录安排一个定时器，到期后调用 TopologyTupleTimerExpire() 来删除这个记录。
             m_events.Track(Simulator::Schedule(DELAY(topologyTuple.expirationTime),
                                                &RoutingProtocol::TopologyTupleTimerExpire,
                                                this,
@@ -2250,8 +2361,8 @@ RoutingProtocol::ProcessMid(const polsr::MessageHeader& msg, const Ipv4Address& 
     Time now = Simulator::Now();
 
     NS_LOG_DEBUG("Node " << m_mainAddress << " ProcessMid from " << senderIface);
-    // 1. If the sender interface of this message is not in the symmetric
-    // 1-hop neighborhood of this node, the message MUST be discarded.
+    // 1. 如果该 message 的发送接口不属于本节点的对称
+    // 一跳邻居中，则必须丢弃该 message。
     const LinkTuple* linkTuple = m_state.FindSymLinkTuple(senderIface, now);
     if (linkTuple == nullptr)
     {
@@ -2262,7 +2373,7 @@ RoutingProtocol::ProcessMid(const polsr::MessageHeader& msg, const Ipv4Address& 
         return;
     }
 
-    // 2. For each interface address listed in the MID message
+    // 2. 对 MID message 中列出的每个接口地址，
     for (auto i = mid.interfaceAddresses.begin(); i != mid.interfaceAddresses.end(); i++)
     {
         bool updated = false;
@@ -2333,22 +2444,22 @@ RoutingProtocol::ProcessHna(const polsr::MessageHeader& msg, const Ipv4Address& 
         AssociationTuple* tuple =
             m_state.FindAssociationTuple(msg.GetOriginatorAddress(), it->address, it->mask);
 
-        // 2.1  if an entry in the association set already exists, where:
-        //          A_gateway_addr == originator address
-        //          A_network_addr == network address
-        //          A_netmask      == netmask
-        //      then the holding time for that tuple MUST be set to:
-        //          A_time         =  current time + validity time
+        // 2.1 如果 association 集合中已经存在满足以下条件的条目：
+        //          A_gateway_addr == originator address，
+        //          A_network_addr == network address，
+        //          A_netmask == netmask，
+        //      则必须把该 tuple 的保持时间设置为：
+        //          A_time = 当前时间 + 有效时间。
         if (tuple != nullptr)
         {
             tuple->expirationTime = now + msg.GetVTime();
         }
 
-        // 2.2 otherwise, a new tuple MUST be recorded with:
-        //          A_gateway_addr =  originator address
-        //          A_network_addr =  network address
-        //          A_netmask      =  netmask
-        //          A_time         =  current time + validity time
+        // 2.2 否则，必须记录一个新的 tuple，字段如下：
+        //          A_gateway_addr = originator address，
+        //          A_network_addr = network address，
+        //          A_netmask = netmask，
+        //          A_time = 当前时间 + 有效时间。
         else
         {
             AssociationTuple assocTuple = {msg.GetOriginatorAddress(),
@@ -2357,7 +2468,7 @@ RoutingProtocol::ProcessHna(const polsr::MessageHeader& msg, const Ipv4Address& 
                                            now + msg.GetVTime()};
             AddAssociationTuple(assocTuple);
 
-            // Schedule Association Tuple deletion
+            // 安排 association tuple 的过期删除定时器。
             Simulator::Schedule(DELAY(assocTuple.expirationTime),
                                 &RoutingProtocol::AssociationTupleTimerExpire,
                                 this,
@@ -2384,8 +2495,9 @@ RoutingProtocol::ForwardDefault(polsr::MessageHeader polsrMessage,
         return;
     }
 
-    // If the message has already been considered for forwarding,
-    // it must not be retransmitted again
+    // 如果该 message 已经被考虑过转发，
+    // 就不能再次重传。
+    // 如果这个消息之前已经被转发过了，就不要再转发了
     if (duplicated != nullptr && duplicated->retransmitted)
     {
         NS_LOG_LOGIC(Simulator::Now()
@@ -2415,7 +2527,8 @@ RoutingProtocol::ForwardDefault(polsr::MessageHeader polsrMessage,
         }
     }
 
-    // Update duplicate tuple...
+    // Update duplicate tuple...更新 Duplicate Set，避免重复转发
+    // 如果之前已经有这个消息的记录了，就更新过期时间和转发状态，并把转发接口加入到记录里；否则就新建一条记录。
     if (duplicated != nullptr)
     {
         duplicated->expirationTime = now + POLSR_DUP_HOLD_TIME;
@@ -2568,7 +2681,7 @@ RoutingProtocol::SendHello()
         LinkType linkType;
         NeighborType neighborType;
 
-        // Establishes link type
+        // 确定链路类型。
         if (link_tuple->symTime >= now)
         {
             linkType = LinkType::SYM_LINK;
@@ -2581,7 +2694,7 @@ RoutingProtocol::SendHello()
         {
             linkType = LinkType::LOST_LINK;
         }
-        // Establishes neighbor type.
+        // 确定邻居类型。
         if (m_state.FindMprAddress(GetMainAddress(link_tuple->neighborIfaceAddr)))
         {
             neighborType = NeighborType::MPR_NEIGH;
@@ -2707,21 +2820,21 @@ RoutingProtocol::SendMid()
     polsr::MessageHeader msg;
     polsr::MessageHeader::Mid& mid = msg.GetMid();
 
-    // A node which has only a single interface address participating in
-    // the MANET (i.e., running POLSR), MUST NOT generate any MID
-    // message.
+    // 如果某个节点只有一个接口地址参与
+    // MANET（也就是运行 OLSR），则不得生成任何 MID
+    // message。
 
-    // A node with several interfaces, where only one is participating
-    // in the MANET and running POLSR (e.g., a node is connected to a
-    // wired network as well as to a MANET) MUST NOT generate any MID
-    // messages.
+    // 如果某个节点有多个接口，但只有一个接口参与
+    // MANET 并运行 OLSR（例如节点同时连接到
+    // 有线网络和 MANET），则不得生成任何 MID
+    // message。
 
-    // A node with several interfaces, where more than one is
-    // participating in the MANET and running POLSR MUST generate MID
-    // messages as specified.
+    // 如果某个节点有多个接口，并且不止一个接口
+    // 参与 MANET 并运行 OLSR，则必须按规范生成 MID
+    // message。
 
-    // [ Note: assuming here that all interfaces participate in the
-    // MANET; later we may want to make this configurable. ]
+    // [注意：这里假设所有接口都参与
+    // MANET；后续可以考虑把它做成可配置项。]
 
     Ipv4Address loopback("127.0.0.1");
     for (uint32_t i = 0; i < m_ipv4->GetNInterfaces(); i++)
@@ -2761,28 +2874,28 @@ RoutingProtocol::SendHna()
 
     std::vector<polsr::MessageHeader::Hna::Association>& associations = hna.associations;
 
-    // Add all local HNA associations to the HNA message
+    // 将所有本地 HNA association 加入 HNA message。
     const Associations& localHnaAssociations = m_state.GetAssociations();
     for (auto it = localHnaAssociations.begin(); it != localHnaAssociations.end(); it++)
     {
         polsr::MessageHeader::Hna::Association assoc = {it->networkAddr, it->netmask};
         associations.push_back(assoc);
     }
-    // If there is no HNA associations to send, return without queuing the message
+    // 如果没有需要发送的 HNA association，则不入队该 message，直接返回。
     if (associations.empty())
     {
         return;
     }
 
-    // Else, queue the message to be sent later on
+    // 否则将该 message 入队，稍后发送。
     QueueMessage(msg, JITTER);
 }
 
 void
 RoutingProtocol::AddHostNetworkAssociation(Ipv4Address networkAddr, Ipv4Mask netmask)
 {
-    // Check if the (networkAddr, netmask) tuple already exist
-    // in the list of local HNA associations
+    // 检查（networkAddr，netmask）tuple 是否已经存在于
+    // 本地 HNA association 列表中。
     const Associations& localHnaAssociations = m_state.GetAssociations();
     for (auto assocIterator = localHnaAssociations.begin();
          assocIterator != localHnaAssociations.end();
@@ -2796,7 +2909,7 @@ RoutingProtocol::AddHostNetworkAssociation(Ipv4Address networkAddr, Ipv4Mask net
             return;
         }
     }
-    // If the tuple does not already exist, add it to the list of local HNA associations.
+    // 如果该 tuple 尚不存在，就把它加入本地 HNA association 列表。
     NS_LOG_INFO("Adding HNA association for network " << networkAddr << "/" << netmask << ".");
     m_state.InsertAssociation(Association{networkAddr, netmask});
 }
@@ -2811,8 +2924,8 @@ RoutingProtocol::RemoveHostNetworkAssociation(Ipv4Address networkAddr, Ipv4Mask 
 void
 RoutingProtocol::SetRoutingTableAssociation(Ptr<Ipv4StaticRouting> routingTable)
 {
-    // If a routing table has already been associated, remove
-    // corresponding entries from the list of local HNA associations
+    // 如果已经关联过一个路由表，先移除
+    // 本地 HNA association 列表中对应的条目。
     if (m_routingTableAssociation)
     {
         NS_LOG_INFO("Removing HNA entries coming from the old routing table association.");
@@ -2822,13 +2935,13 @@ RoutingProtocol::SetRoutingTableAssociation(Ptr<Ipv4StaticRouting> routingTable)
             // If the outgoing interface for this route is a non-polsr interface
             if (UsesNonPolsrOutgoingInterface(route))
             {
-                // remove the corresponding entry
+                // 移除对应条目。
                 RemoveHostNetworkAssociation(route.GetDestNetwork(), route.GetDestNetworkMask());
             }
         }
     }
 
-    // Sets the routingTableAssociation to its new value
+    // 将 routingTableAssociation 设置为新的路由表。
     m_routingTableAssociation = routingTable;
 
     // Iterate over entries of the associated routing table and
@@ -2846,7 +2959,7 @@ RoutingProtocol::SetRoutingTableAssociation(Ptr<Ipv4StaticRouting> routingTable)
         // If the outgoing interface for this route is a non-polsr interface,
         if (UsesNonPolsrOutgoingInterface(route))
         {
-            // Add this entry's network address and netmask to the list of local HNA entries
+            // 将该条目的网络地址和网络掩码加入本地 HNA 条目列表。
             AddHostNetworkAssociation(destNetworkAddress, destNetmask);
         }
     }
@@ -2882,7 +2995,7 @@ RoutingProtocol::LinkSensing(const polsr::MessageHeader& msg,
     if (link_tuple == nullptr)
     {
         LinkTuple newLinkTuple;
-        // We have to create a new tuple
+        // 这里需要创建一个新的 tuple。
         newLinkTuple.neighborIfaceAddr = senderIface;
         newLinkTuple.localIfaceAddr = receiverIface;
         newLinkTuple.symTime = now - Seconds(1);
@@ -2907,7 +3020,7 @@ RoutingProtocol::LinkSensing(const polsr::MessageHeader& msg,
         NS_LOG_DEBUG("Looking at HELLO link messages with Link Type "
                      << linkType << " and Neighbor Type " << neighborType);
 
-        // We must not process invalid advertised links
+   // 不处理无效的被通告链路。
         if ((linkType == LinkType::SYM_LINK && neighborType == NeighborType::NOT_NEIGH) ||
             (neighborType != NeighborType::SYM_NEIGH && neighborType != NeighborType::MPR_NEIGH &&
              neighborType != NeighborType::NOT_NEIGH))
@@ -2960,7 +3073,7 @@ RoutingProtocol::LinkSensing(const polsr::MessageHeader& msg,
         LinkTupleUpdated(*link_tuple, hello.willingness);
     }
 
-    // Schedules link tuple deletion
+    // 安排 link tuple 的过期删除定时器。
     if (created)
     {
         LinkTupleAdded(*link_tuple, hello.willingness);
@@ -3030,16 +3143,16 @@ RoutingProtocol::PopulateTwoHopNeighborSet(const polsr::MessageHeader& msg,
                 if (neighborType == NeighborType::SYM_NEIGH ||
                     neighborType == NeighborType::MPR_NEIGH)
                 {
-                    // If the main address of the 2-hop neighbor address == main address
-                    // of the receiving node, silently discard the 2-hop
-                    // neighbor address.
+                    // 如果二跳邻居地址的主地址等于
+                    // 当前接收节点的主地址，则静默丢弃该二跳
+                    // 邻居地址。
                     if (nb2hop_addr == m_mainAddress)
                     {
                         NS_LOG_LOGIC("Ignoring 2-hop neighbor (it is the node itself)");
                         continue;
                     }
 
-                    // Otherwise, a 2-hop tuple is created
+                    // 否则创建一个二跳 tuple。
                     TwoHopNeighborTuple* nb2hop_tuple =
                         m_state.FindTwoHopNeighborTuple(msg.GetOriginatorAddress(), nb2hop_addr);
                     NS_LOG_LOGIC("Adding the 2-hop neighbor"
@@ -3051,7 +3164,7 @@ RoutingProtocol::PopulateTwoHopNeighborSet(const polsr::MessageHeader& msg,
                         new_nb2hop_tuple.twoHopNeighborAddr = nb2hop_addr;
                         new_nb2hop_tuple.expirationTime = now + msg.GetVTime();
                         AddTwoHopNeighborTuple(new_nb2hop_tuple);
-                        // Schedules nb2hop tuple deletion
+                        // 安排二跳邻居 tuple 的过期删除定时器。
                         m_events.Track(Simulator::Schedule(DELAY(new_nb2hop_tuple.expirationTime),
                                                            &RoutingProtocol::Nb2hopTupleTimerExpire,
                                                            this,
@@ -3065,11 +3178,11 @@ RoutingProtocol::PopulateTwoHopNeighborSet(const polsr::MessageHeader& msg,
                 }
                 else if (neighborType == NeighborType::NOT_NEIGH)
                 {
-                    // For each 2-hop node listed in the HELLO message
-                    // with Neighbor Type equal to NOT_NEIGH all 2-hop
-                    // tuples where: N_neighbor_main_addr == Originator
-                    // Address AND N_2hop_addr == main address of the
-                    // 2-hop neighbor are deleted.
+                    // 对 HELLO message 中列出的每个二跳节点，
+                    // 如果其 Neighbor Type 等于 NOT_NEIGH，则删除所有满足条件的二跳
+                    // tuple：N_neighbor_main_addr == Originator Address，
+                    // 并且 N_2hop_addr == 该二跳邻居的主地址。
+                    // 这些二跳邻居记录会被删除。
                     NS_LOG_LOGIC(
                         "2-hop neighbor is NOT_NEIGH => deleting matching 2-hop neighbor state");
                     m_state.EraseTwoHopNeighborTuples(msg.GetOriginatorAddress(), nb2hop_addr);
@@ -3123,7 +3236,7 @@ RoutingProtocol::PopulateMprSelectorSet(const polsr::MessageHeader& msg,
                         mprsel_tuple.expirationTime = now + msg.GetVTime();
                         AddMprSelectorTuple(mprsel_tuple);
 
-                        // Schedules mpr selector tuple deletion
+                        // 安排 MPR selector tuple 的过期删除定时器。
                         m_events.Track(Simulator::Schedule(DELAY(mprsel_tuple.expirationTime),
                                                            &RoutingProtocol::MprSelTupleTimerExpire,
                                                            this,
@@ -3143,11 +3256,11 @@ RoutingProtocol::PopulateMprSelectorSet(const polsr::MessageHeader& msg,
 
 #if 0
 ///
-/// @brief Drops a given packet because it couldn't be delivered to the corresponding
-/// destination by the MAC layer. This may cause a neighbor loss, and appropriate
-/// actions are then taken.
+/// @brief 因为 MAC 层无法把 packet 投递到对应目的地，所以丢弃该 packet。
+/// 这可能导致邻居失效，因此后续需要采取相应处理。
+/// 相关处理会在这里触发。
 ///
-/// @param p the packet which couldn't be delivered by the MAC layer.
+/// @param p MAC 层无法投递的 packet。
 ///
 void
 POLSR::mac_failed(Ptr<Packet> p)

@@ -6,7 +6,6 @@
  */
 
 #include "polsr-module/helper/polsr-helper.h"
-
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
 #include "ns3/flow-monitor-module.h"
@@ -16,6 +15,13 @@
 #include "ns3/olsr-helper.h"
 #include "ns3/propagation-module.h"
 #include "ns3/wifi-module.h"
+#include "ns3/ipv4.h"
+#include "ns3/ipv4-global-routing-helper.h"
+#include "ns3/ipv4-routing-helper.h"
+#include "ns3/ipv4-list-routing.h"
+#include "ns3/trace-helper.h"
+#include "ns3/output-stream-wrapper.h"
+
 
 #include <algorithm>
 #include <cmath>
@@ -416,6 +422,77 @@ ApplyMobility(NodeContainer nodes, std::string scenario, double t, double step, 
     }
 }
 
+/*
+ * 调试辅助函数：输出当前所有节点的 IPv4 路由表。
+ *
+ * 作用：
+ * 1. 遍历仿真中的所有节点；
+ * 2. 从每个节点中取出 Ipv4 对象；
+ * 3. 再从 Ipv4 对象中取出当前安装的路由协议；
+ * 4. 调用路由协议自己的 PrintRoutingTable() 接口，把路由表写入文件。
+ *
+ * 注意：
+ * - 该函数只用于实验观察和调试；
+ * - 不会修改路由表；
+ * - 不会改变 P-OLSR / OLSR-ETX 的路由计算逻辑；
+ * - 不会影响数据包转发和实验指标；
+ * - 输出内容取决于调用该函数时的仿真时间。
+ */
+static void
+PrintAllRoutingTables(NodeContainer nodes,
+                      Ptr<OutputStreamWrapper> stream,
+                      Time::Unit unit = Time::S)
+{
+    /*
+     * 在输出文件中标记当前快照时间。
+     * Simulator::Now() 返回当前仿真时间，不是系统真实时间。
+     */
+    *stream->GetStream() << "\n=== Routing tables at "
+                         << Simulator::Now().GetSeconds()
+                         << " s ===\n";
+     /*
+     * 逐个遍历 NodeContainer 中的节点。
+     * i 是节点编号，和 nodes.Get(i) 对应。
+     */
+    for (uint32_t i = 0; i < nodes.GetN(); ++i)
+    {
+        Ptr<Node> node = nodes.Get(i);
+        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
+
+        /*
+         * 给每个节点的路由表加一个分隔标题，方便后续查看。
+         */
+        *stream->GetStream() << "\n--- Node " << i << " ---\n";
+
+          /*
+         * 如果节点还没有安装 IPv4 协议栈，则无法打印路由表。
+         * 正常情况下，InstallRouting() 调用 internet.Install(nodes) 后应当存在 Ipv4 对象。
+         */
+        if (!ipv4)
+        {
+            *stream->GetStream() << "No Ipv4 object\n";
+            continue;
+        }
+
+        /*
+         * 获取该节点当前使用的 IPv4 路由协议。
+         * 这里实际拿到的通常是 Ipv4ListRouting，里面再包含 P-OLSR 或 OLSR-ETX。
+         */
+        Ptr<Ipv4RoutingProtocol> routing = ipv4->GetRoutingProtocol();
+        if (!routing)
+        {
+            *stream->GetStream() << "No routing protocol\n";
+            continue;
+        }
+
+        /*
+         * 调用 ns-3 路由协议统一的路由表打印接口。
+         * 对 P-OLSR 来说，最终会进入 polsr-routing-protocol.cc 中的 PrintRoutingTable()。
+         */
+        routing->PrintRoutingTable(stream, unit);
+    }
+}
+
 void
 InstallRouting(NodeContainer nodes, const std::string& protocol, const ExperimentOptions& options)
 {
@@ -583,6 +660,36 @@ RunExperiment(const std::string& scenario,
 
     FlowMonitorHelper flowHelper;
     Ptr<FlowMonitor> monitor = flowHelper.InstallAll();
+    
+    /*
+    * 路由表快照输出。
+    *
+    * 作用：
+    * 1. 在指定仿真时刻输出所有节点的路由表；
+    * 2. 用于观察 P-OLSR 或 OLSR-ETX 在不同时间点选择的下一跳；
+    * 3. 输出文件保存在当前实验的 outputDir 中。
+    *
+    * 注意：
+    * - 这里只是安排打印事件，不改变协议逻辑；
+    * - 打印事件会在 Simulator::Run() 期间按指定时间触发；
+    * - 如果仿真结束时间小于某个快照时间，该快照不会输出；
+    * - 每个 protocol / runIndex 使用单独文件，避免不同实验结果混在一起。
+    */
+    std::filesystem::create_directories(outputDir);
+
+    AsciiTraceHelper ascii;
+    Ptr<OutputStreamWrapper> routingStream =
+        ascii.CreateFileStream(outputDir + "/routing-tables-" + protocol +
+                            "-run" + std::to_string(options.runIndex) + ".txt");
+    /*
+    * 这些时间点可以按需要调整。
+    * 例如 large 场景总时长较长，可以看 30s、100s、200s、300s；
+    * 如果只是短时间测试，可以改成 5s、10s、20s。
+    */
+    Simulator::Schedule(Seconds(30.0), &PrintAllRoutingTables, nodes, routingStream, Time::S);
+    Simulator::Schedule(Seconds(100.0), &PrintAllRoutingTables, nodes, routingStream, Time::S);
+    Simulator::Schedule(Seconds(200.0), &PrintAllRoutingTables, nodes, routingStream, Time::S);
+    Simulator::Schedule(Seconds(300.0), &PrintAllRoutingTables, nodes, routingStream, Time::S);
 
     Simulator::Stop(Seconds(stopTime));
     Simulator::Run();
@@ -701,7 +808,7 @@ RunExperiment(const std::string& scenario,
 int
 main(int argc, char* argv[])
 {
-    std::string scenario = "field";
+    std::string scenario = "large";
     std::string protocol = "P-OLSR";
     std::string outputDir = "scratch/P-OLSR/protocol-results";
     ExperimentOptions options;
